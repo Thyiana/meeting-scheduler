@@ -2,7 +2,14 @@ const path = require('path');
 const fs = require('fs');
 const { DatabaseSync } = require('node:sqlite');
 
-const DATA_DIR = path.join(__dirname, '..', 'data');
+// The data directory can be overridden with the DATA_DIR environment
+// variable — this matters on hosts like Render, whose default filesystem is
+// wiped on every new deploy. Pointing DATA_DIR at a mounted persistent disk
+// (e.g. DATA_DIR=/var/data) keeps the database across deploys and restarts;
+// without it, this just defaults to a local ./data folder as before.
+const DATA_DIR = process.env.DATA_DIR
+  ? process.env.DATA_DIR
+  : path.join(__dirname, '..', 'data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const DB_PATH = path.join(DATA_DIR, 'scheduler.db');

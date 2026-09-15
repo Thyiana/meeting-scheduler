@@ -213,11 +213,39 @@
     bookForm.reset();
     bookError.classList.remove('show');
     renderRoomSelect();
+    el('guestMeetingId').value = '';
+    el('guestMeetingCardColor').value = '';
+    el('guestBookModalTitle').textContent = '新建预约';
+    el('guestSaveBtn').textContent = '提交预约';
     if (state.activeRoomId) el('guestRoom').value = state.activeRoomId;
     if (prefillRange) {
       el('guestStart').value = fmtLocalInput(toLocalIsoNoZone(prefillRange.start));
       el('guestEnd').value = fmtLocalInput(toLocalIsoNoZone(prefillRange.end));
     }
+    bookOverlay.classList.add('open');
+    setTimeout(() => el('guestTopic').focus(), 30);
+  }
+
+  // Reused for "编辑" from the view-only modal — same form, pre-filled with
+  // the existing meeting, submitting as an update (PUT) instead of a create.
+  function openEditModal(meeting) {
+    bookForm.reset();
+    bookError.classList.remove('show');
+    renderRoomSelect();
+    el('guestMeetingId').value = meeting.id;
+    // Preserve whatever color the meeting already has (possibly a custom
+    // one set from the admin side) — the guest form has no color picker,
+    // so we must resend the existing value or it would silently reset to
+    // the room's default color on save.
+    el('guestMeetingCardColor').value = meeting.card_color || '';
+    el('guestBookModalTitle').textContent = '编辑预约';
+    el('guestSaveBtn').textContent = '保存修改';
+    el('guestRoom').value = meeting.room_id;
+    el('guestTopic').value = meeting.topic;
+    el('guestHost').value = meeting.host;
+    el('guestStart').value = fmtLocalInput(meeting.start_time);
+    el('guestEnd').value = fmtLocalInput(meeting.end_time);
+    el('guestLink').value = meeting.attendee_link || '';
     bookOverlay.classList.add('open');
     setTimeout(() => el('guestTopic').focus(), 30);
   }
@@ -243,11 +271,19 @@
       start_time: el('guestStart').value,
       end_time: el('guestEnd').value,
       attendee_link: el('guestLink').value.trim(),
+      card_color: el('guestMeetingCardColor').value,
     };
+    const editId = el('guestMeetingId').value;
     try {
-      await api('/meetings', { method: 'POST', body: JSON.stringify(payload) });
-      toast('预约成功');
+      if (editId) {
+        await api(`/meetings/${editId}`, { method: 'PUT', body: JSON.stringify(payload) });
+        toast('预约已更新');
+      } else {
+        await api('/meetings', { method: 'POST', body: JSON.stringify(payload) });
+        toast('预约成功');
+      }
       closeBookModal();
+      closeViewModal();
       await loadMeetings();
     } catch (err) {
       bookError.textContent = err.message;
@@ -302,6 +338,12 @@
   el('guestViewModalClose').addEventListener('click', closeViewModal);
   el('guestViewCloseBtn').addEventListener('click', closeViewModal);
   viewOverlay.addEventListener('click', (e) => { if (e.target === viewOverlay) closeViewModal(); });
+  el('guestViewEditBtn').addEventListener('click', () => {
+    const m = state.meetings.find((x) => x.id === viewingMeetingId);
+    if (!m) return;
+    viewOverlay.classList.remove('open');
+    openEditModal(m);
+  });
 
   el('guestViewDeleteBtn').addEventListener('click', async () => {
     if (!viewingMeetingId) return;
