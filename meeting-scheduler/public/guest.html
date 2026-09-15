@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+<title>会议室预约 · 嘉宾端</title>
+<link rel="stylesheet" href="style.css" />
+<link rel="stylesheet" href="guest.css" />
+
+<!-- FullCalendar 6 (国内 BootCDN，v6 起样式已内置，无需单独引入 css) -->
+<script src="https://cdn.bootcdn.net/ajax/libs/fullcalendar/6.1.15/index.global.min.js"></script>
+<!-- <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script> -->
+</head>
+<body class="guest-body">
+
+<header class="guest-header">
+  <div class="guest-title">会议室预约</div>
+  <div class="guest-range">2026-09-28 — 2026-10-01</div>
+</header>
+
+<nav class="guest-room-tabs" id="guestRoomTabs"></nav>
+<nav class="guest-day-tabs" id="guestDayTabs"></nav>
+
+<main class="guest-calendar-wrap">
+  <div id="guestCalendar"></div>
+</main>
+
+<button id="guestAddBtn" class="guest-fab" type="button">+ 新建预约</button>
+
+<!-- ============ Booking Modal ============ -->
+<div class="modal-overlay" id="guestBookModalOverlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>新建预约</h3>
+      <button class="modal-close" id="guestBookModalClose">&times;</button>
+    </div>
+    <div class="error-text" id="guestFormError"></div>
+    <form class="modal-form" id="guestBookForm">
+      <div class="field">
+        <label for="guestRoom">会议室</label>
+        <select id="guestRoom" required></select>
+      </div>
+      <div class="field">
+        <label for="guestTopic">会议主题</label>
+        <input type="text" id="guestTopic" required autocomplete="off" />
+      </div>
+      <div class="field">
+        <label for="guestHost">姓名 / 主持人</label>
+        <input type="text" id="guestHost" required autocomplete="off" />
+      </div>
+      <div class="modal-row">
+        <div class="field">
+          <label for="guestStart">开始时间</label>
+          <input type="datetime-local" id="guestStart" required min="2026-09-28T00:00" max="2026-10-01T23:59" />
+        </div>
+        <div class="field">
+          <label for="guestEnd">结束时间</label>
+          <input type="datetime-local" id="guestEnd" required min="2026-09-28T00:00" max="2026-10-01T23:59" />
+        </div>
+      </div>
+      <div class="field">
+        <label for="guestLink">参会人员名单链接</label>
+        <input type="url" id="guestLink" placeholder="Excel / 文档 URL（选填）" autocomplete="off" />
+      </div>
+    </form>
+    <div class="modal-footer">
+      <div></div>
+      <div class="right">
+        <button id="guestCancelBtn" class="btn btn-secondary btn-sm">取消</button>
+        <button id="guestSaveBtn" class="btn btn-sm">提交预约</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ View-only Modal ============ -->
+<div class="modal-overlay" id="guestViewModalOverlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>预约详情</h3>
+      <button class="modal-close" id="guestViewModalClose">&times;</button>
+    </div>
+    <div class="guest-view-body" id="guestViewBody"></div>
+    <div class="modal-footer">
+      <button id="guestViewDeleteBtn" class="btn btn-danger btn-sm">取消该预约</button>
+      <div class="right">
+        <button id="guestViewCloseBtn" class="btn btn-secondary btn-sm">关闭</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="guest.js"></script>
+</body>
+</html>
