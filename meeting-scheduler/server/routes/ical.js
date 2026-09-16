@@ -18,7 +18,7 @@ router.post('/', (req, res) => {
   const name = (req.body.name || '').trim();
   const url = (req.body.url || '').trim();
   const room_id = req.body.room_id ? Number(req.body.room_id) : null;
-  if (!name || !url) return res.status(400).json({ error: '请填写名称和 iCal URL' });
+  if (!name || !url) return res.status(400).json({ error: '请填写名称和 iCal URL', code: 'ICAL_FIELDS_REQUIRED' });
 
   const info = db.prepare(
     'INSERT INTO ical_sources (name, url, room_id, enabled) VALUES (?, ?, ?, 1)'
@@ -40,7 +40,7 @@ router.delete('/:id', (req, res) => {
 router.post('/:id/sync-now', (req, res) => {
   const id = Number(req.params.id);
   const source = db.prepare('SELECT * FROM ical_sources WHERE id = ?').get(id);
-  if (!source) return res.status(404).json({ error: '同步源不存在' });
+  if (!source) return res.status(404).json({ error: '同步源不存在', code: 'ICAL_NOT_FOUND' });
 
   res.json({ ok: true, message: '同步已在后台开始' });
   // Fire-and-forget; errors are caught and logged inside syncOneSource so

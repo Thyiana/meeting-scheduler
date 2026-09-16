@@ -1,0 +1,137 @@
+const express = require('express');
+const db = require('../db');
+
+const router = express.Router();
+
+// The scheduler only manages this fixed window (inclusive of both dates).
+const VALID_RANGE_START = '2026-09-28T00:00:00';
+const VALID_RANGE_END = '2026-10-02T00:00:00'; // exclusive upper bound (end of 10-01)
+
+function inValidRange(iso) {
+  return iso >= VALID_RANGE_START && iso <= VALID_RANGE_END;
+}
+
+function normalizeDateTime(value) {
+  if (value === undefined || value === null) return null;
+  const str = String(value).trim();
+  if (!str) return null;
+  // Accept "YYYY-MM-DD HH:mm" or "YYYY-MM-DDTHH:mm[:ss]"
+  const normalized = str.replace(' ', 'T');
+  const match = normalized.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})(:\d{2})?$/);
+  if (!match) return null;
+  return match[2] ? normalized : `${normalized}:00`;
+}
+
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+
+// Every validation failure carries a `code` (used by the frontend's i18n
+// dictionary to show the message in whichever language is active) plus a
+// Chinese `error` string as a sane fallback for any caller that ignores it.
+function validateMeetingPayload(body) {
+  const room_id = Number(body.room_id);
+  const topic = (body.topic || '').trim();
+  const host = (body.host || '').trim();
+  const start_time = normalizeDateTime(body.start_time);
+  const end_time = normalizeDateTime(body.end_time);
+  const attendee_link = (body.attendee_link || '').trim();
+
+  if (!room_id) return { error: '请选择会议室', code: 'MEETING_ROOM_REQUIRED' };
+  if (!topic) return { error: '请输入会议主题', code: 'MEETING_TOPIC_REQUIRED' };
+  if (!host) return { error: '请输入主持人/负责人', code: 'MEETING_HOST_REQUIRED' };
+  if (!start_time || !end_time) return { error: '开始/结束时间格式不正确', code: 'MEETING_TIME_INVALID' };
+  if (start_time >= end_time) return { error: '结束时间必须晚于开始时间', code: 'MEETING_END_BEFORE_START' };
+  if (!inValidRange(start_time) || !inValidRange(end_time)) {
+    return { error: '会议时间需在 2026-09-28 至 2026-10-01 排期区间内', code: 'MEETING_OUT_OF_RANGE' };
+  }
+  const room = db.prepare('SELECT id FROM rooms WHERE id = ?').get(room_id);
+  if (!room) return { error: '所选会议室不存在', code: 'MEETING_ROOM_NOT_FOUND' };
+
+  // card_color is optional: null/empty means "use the room's default color".
+  let card_color = body.card_color === undefined || body.card_color === null
+    ? null
+    : String(body.card_color).trim();
+  if (card_color === '') card_color = null;
+  if (card_color !== null && !HEX_COLOR_RE.test(card_color)) {
+    return { error: '卡片颜色格式不正确，应为 #RRGGBB', code: 'MEETING_COLOR_INVALID' };
+  }
+
+  return { value: { room_id, topic, host, start_time, end_time, attendee_link, card_color } };
+}
+
+function hasConflict(room_id, start_time, end_time, excludeId) {
+  const row = db.prepare(
+    `SELECT id FROM meetings
+     WHERE room_id = ?
+       AND id != COALESCE(?, -1)
+       AND start_time < ? AND end_time > ?
+     LIMIT 1`
+  ).get(room_id, excludeId || null, end_time, start_time);
+  return !!row;
+}
+
+// GET /api/meetings - list meetings (optionally filtered by range), joined with room name
+router.get('/', (req, res) => {
+  const rows = db.prepare(`
+    SELECT m.id, m.room_id, r.name AS room_name, m.topic, m.host,
+           m.start_time, m.end_time, m.attendee_link, m.card_color, m.source
+    FROM meetings m
+    JOIN rooms r ON r.id = m.room_id
+    ORDER BY m.start_time ASC
+  `).all();
+  res.json(rows);
+});
+
+// POST /api/meetings - create a meeting
+router.post('/', (req, res) => {
+  const { error, code, value } = validateMeetingPayload(req.body);
+  if (error) return res.status(400).json({ error, code });
+  if (hasConflict(value.room_id, value.start_time, value.end_time)) {
+    return res.status(409).json({ error: '该会议室在此时间段已有预约，存在时间冲突', code: 'MEETING_CONFLICT' });
+  }
+  const info = db.prepare(`
+    INSERT INTO meetings (room_id, topic, host, start_time, end_time, attendee_link, card_color, source)
+    VALUES ($room_id, $topic, $host, $start_time, $end_time, $attendee_link, $card_color, 'manual')
+  `).run(value);
+  const meeting = db.prepare(`
+    SELECT m.id, m.room_id, r.name AS room_name, m.topic, m.host, m.start_time, m.end_time, m.attendee_link, m.card_color, m.source
+    FROM meetings m JOIN rooms r ON r.id = m.room_id WHERE m.id = ?
+  `).get(info.lastInsertRowid);
+  res.status(201).json(meeting);
+});
+
+// PUT /api/meetings/:id - update a meeting
+router.put('/:id', (req, res) => {
+  const id = Number(req.params.id);
+  const existing = db.prepare('SELECT id FROM meetings WHERE id = ?').get(id);
+  if (!existing) return res.status(404).json({ error: '预约不存在', code: 'MEETING_NOT_FOUND' });
+
+  const { error, code, value } = validateMeetingPayload(req.body);
+  if (error) return res.status(400).json({ error, code });
+  if (hasConflict(value.room_id, value.start_time, value.end_time, id)) {
+    return res.status(409).json({ error: '该会议室在此时间段已有预约，存在时间冲突', code: 'MEETING_CONFLICT' });
+  }
+  db.prepare(`
+    UPDATE meetings
+    SET room_id = $room_id, topic = $topic, host = $host,
+        start_time = $start_time, end_time = $end_time,
+        attendee_link = $attendee_link, card_color = $card_color, updated_at = datetime('now')
+    WHERE id = @id
+  `).run({ ...value, id });
+
+  const meeting = db.prepare(`
+    SELECT m.id, m.room_id, r.name AS room_name, m.topic, m.host, m.start_time, m.end_time, m.attendee_link, m.card_color, m.source
+    FROM meetings m JOIN rooms r ON r.id = m.room_id WHERE m.id = ?
+  `).get(id);
+  res.json(meeting);
+});
+
+// DELETE /api/meetings/:id
+router.delete('/:id', (req, res) => {
+  const id = Number(req.params.id);
+  const existing = db.prepare('SELECT id FROM meetings WHERE id = ?').get(id);
+  if (!existing) return res.status(404).json({ error: '预约不存在', code: 'MEETING_NOT_FOUND' });
+  db.prepare('DELETE FROM meetings WHERE id = ?').run(id);
+  res.json({ ok: true });
+});
+
+module.exports = router;

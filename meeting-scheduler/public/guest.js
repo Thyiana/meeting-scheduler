@@ -1,20 +1,22 @@
 (function () {
   'use strict';
 
-  const DAYS = [
-    { date: '2026-09-28', label: '9/28 周一' },
-    { date: '2026-09-29', label: '9/29 周二' },
-    { date: '2026-09-30', label: '9/30 周三' },
-    { date: '2026-10-01', label: '10/1 周四' },
-  ];
+  const DAY_DATES = ['2026-09-28', '2026-09-29', '2026-09-30', '2026-10-01'];
   const RANGE_START = '2026-09-28';
   const RANGE_END_EXCLUSIVE = '2026-10-02';
+  const T = window.I18N.t;
+  const ERR = window.I18N.errorText;
+
+  function dayLabel(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00');
+    return `${d.getMonth() + 1}/${d.getDate()} ${T(`weekday.${d.getDay()}`)}`;
+  }
 
   const state = {
     rooms: [],
     meetings: [],
     activeRoomId: null,
-    activeDate: DAYS[0].date,
+    activeDate: DAY_DATES[0],
   };
 
   const el = (id) => document.getElementById(id);
@@ -48,10 +50,6 @@
     return `rgba(${r}, ${g}, ${b}, 0.09)`;
   }
 
-  function roomFill(roomId) {
-    return hexToFill(roomColor(roomId));
-  }
-
   function fmtLocalInput(isoLike) {
     return (isoLike || '').slice(0, 16);
   }
@@ -69,7 +67,7 @@
     let data = null;
     try { data = await res.json(); } catch (e) { /* no body */ }
     if (!res.ok) {
-      const err = new Error((data && data.error) || `请求失败 (${res.status})`);
+      const err = new Error(ERR({ code: data && data.code, message: data && data.error }));
       throw err;
     }
     return data;
@@ -105,15 +103,15 @@
   function renderDayTabs() {
     const wrap = el('guestDayTabs');
     wrap.innerHTML = '';
-    DAYS.forEach((day) => {
+    DAY_DATES.forEach((date) => {
       const tab = document.createElement('button');
       tab.type = 'button';
-      tab.className = 'guest-tab' + (day.date === state.activeDate ? ' active' : '');
-      tab.textContent = day.label;
+      tab.className = 'guest-tab' + (date === state.activeDate ? ' active' : '');
+      tab.textContent = dayLabel(date);
       tab.addEventListener('click', () => {
-        state.activeDate = day.date;
+        state.activeDate = date;
         renderDayTabs();
-        if (calendar) calendar.gotoDate(day.date);
+        if (calendar) calendar.gotoDate(date);
       });
       wrap.appendChild(tab);
     });
@@ -157,10 +155,12 @@
     const container = el('guestCalendar');
     if (calendar) { calendar.destroy(); calendar = null; }
     if (!state.activeRoomId) {
-      container.innerHTML = '<div class="legend-hint" style="padding:30px 4px;">暂无会议室，请联系管理员添加</div>';
+      container.innerHTML = `<div class="legend-hint" style="padding:30px 4px;">${T('guest.noRooms')}</div>`;
       return;
     }
     container.innerHTML = '';
+
+    const hostLabel = window.I18N.getLang() === 'zh' ? '主持：' : 'Host: ';
 
     calendar = new FullCalendar.Calendar(container, {
       initialView: 'timeGridDay',
@@ -174,7 +174,7 @@
       nowIndicator: true,
       height: 'auto',
       expandRows: true,
-      locale: 'zh-cn',
+      locale: window.I18N.getLang() === 'zh' ? 'zh-cn' : 'en',
       firstDay: 1,
       selectable: true,
       selectMirror: true,
@@ -194,7 +194,7 @@
         wrap.innerHTML = `
           <div class="ev-time">${fmt(arg.event.start)} – ${fmt(arg.event.end)}</div>
           <div class="ev-topic">${escapeHtml(m.topic)}</div>
-          <div class="ev-host">主持：${escapeHtml(m.host)}</div>
+          <div class="ev-host">${hostLabel}${escapeHtml(m.host)}</div>
         `;
         return { domNodes: [wrap] };
       },
@@ -208,20 +208,28 @@
   const bookOverlay = el('guestBookModalOverlay');
   const bookForm = el('guestBookForm');
   const bookError = el('guestFormError');
+  let colorTouched = false;
+
+  function syncCardColorUI(hex, touched) {
+    el('guestCardColor').value = hex;
+    el('guestCardColorSwatch').style.background = hex;
+    el('guestCardColorText').textContent = touched ? T('guest.colorCustom') : T('guest.colorDefault');
+  }
 
   function openBookModal(prefillRange) {
     bookForm.reset();
     bookError.classList.remove('show');
     renderRoomSelect();
     el('guestMeetingId').value = '';
-    el('guestMeetingCardColor').value = '';
-    el('guestBookModalTitle').textContent = '新建预约';
-    el('guestSaveBtn').textContent = '提交预约';
+    el('guestBookModalTitle').textContent = T('guest.bookTitleNew');
+    el('guestSaveBtn').textContent = T('guest.saveNew');
     if (state.activeRoomId) el('guestRoom').value = state.activeRoomId;
     if (prefillRange) {
       el('guestStart').value = fmtLocalInput(toLocalIsoNoZone(prefillRange.start));
       el('guestEnd').value = fmtLocalInput(toLocalIsoNoZone(prefillRange.end));
     }
+    colorTouched = false;
+    syncCardColorUI(roomColor(Number(el('guestRoom').value)), false);
     bookOverlay.classList.add('open');
     setTimeout(() => el('guestTopic').focus(), 30);
   }
@@ -233,19 +241,16 @@
     bookError.classList.remove('show');
     renderRoomSelect();
     el('guestMeetingId').value = meeting.id;
-    // Preserve whatever color the meeting already has (possibly a custom
-    // one set from the admin side) — the guest form has no color picker,
-    // so we must resend the existing value or it would silently reset to
-    // the room's default color on save.
-    el('guestMeetingCardColor').value = meeting.card_color || '';
-    el('guestBookModalTitle').textContent = '编辑预约';
-    el('guestSaveBtn').textContent = '保存修改';
+    el('guestBookModalTitle').textContent = T('guest.bookTitleEdit');
+    el('guestSaveBtn').textContent = T('guest.saveEdit');
     el('guestRoom').value = meeting.room_id;
     el('guestTopic').value = meeting.topic;
     el('guestHost').value = meeting.host;
     el('guestStart').value = fmtLocalInput(meeting.start_time);
     el('guestEnd').value = fmtLocalInput(meeting.end_time);
     el('guestLink').value = meeting.attendee_link || '';
+    colorTouched = !!meeting.card_color;
+    syncCardColorUI(meeting.card_color || roomColor(meeting.room_id), colorTouched);
     bookOverlay.classList.add('open');
     setTimeout(() => el('guestTopic').focus(), 30);
   }
@@ -261,6 +266,20 @@
   bookOverlay.addEventListener('click', (e) => { if (e.target === bookOverlay) closeBookModal(); });
   el('guestSaveBtn').addEventListener('click', () => bookForm.requestSubmit());
 
+  // While no custom color has been chosen, the preview follows whichever
+  // room is currently selected in the dropdown.
+  el('guestRoom').addEventListener('change', () => {
+    if (!colorTouched) syncCardColorUI(roomColor(Number(el('guestRoom').value)), false);
+  });
+  el('guestCardColor').addEventListener('input', () => {
+    colorTouched = true;
+    syncCardColorUI(el('guestCardColor').value, true);
+  });
+  el('guestColorResetBtn').addEventListener('click', () => {
+    colorTouched = false;
+    syncCardColorUI(roomColor(Number(el('guestRoom').value)), false);
+  });
+
   bookForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     bookError.classList.remove('show');
@@ -271,16 +290,16 @@
       start_time: el('guestStart').value,
       end_time: el('guestEnd').value,
       attendee_link: el('guestLink').value.trim(),
-      card_color: el('guestMeetingCardColor').value,
+      card_color: colorTouched ? el('guestCardColor').value : '',
     };
     const editId = el('guestMeetingId').value;
     try {
       if (editId) {
         await api(`/meetings/${editId}`, { method: 'PUT', body: JSON.stringify(payload) });
-        toast('预约已更新');
+        toast(T('guest.updated'));
       } else {
         await api('/meetings', { method: 'POST', body: JSON.stringify(payload) });
-        toast('预约成功');
+        toast(T('guest.created'));
       }
       closeBookModal();
       closeViewModal();
@@ -319,13 +338,13 @@
     viewingMeetingId = meetingId;
     const linkHtml = m.attendee_link
       ? `<a href="${escapeHtml(m.attendee_link)}" target="_blank" rel="noopener">${escapeHtml(m.attendee_link)}</a>`
-      : '（无）';
+      : T('common.none');
     el('guestViewBody').innerHTML = `
-      <div class="guest-view-row"><span class="k">会议室</span><span class="v">${escapeHtml(m.room_name)}</span></div>
-      <div class="guest-view-row"><span class="k">主题</span><span class="v">${escapeHtml(m.topic)}</span></div>
-      <div class="guest-view-row"><span class="k">主持人</span><span class="v">${escapeHtml(m.host)}</span></div>
-      <div class="guest-view-row"><span class="k">时间</span><span class="v">${m.start_time.replace('T', ' ')} – ${m.end_time.replace('T', ' ')}</span></div>
-      <div class="guest-view-row"><span class="k">参会名单</span><span class="v">${linkHtml}</span></div>
+      <div class="guest-view-row"><span class="k">${T('guest.viewRoom')}</span><span class="v">${escapeHtml(m.room_name)}</span></div>
+      <div class="guest-view-row"><span class="k">${T('guest.viewTopic')}</span><span class="v">${escapeHtml(m.topic)}</span></div>
+      <div class="guest-view-row"><span class="k">${T('guest.viewHost')}</span><span class="v">${escapeHtml(m.host)}</span></div>
+      <div class="guest-view-row"><span class="k">${T('guest.viewTime')}</span><span class="v">${m.start_time.replace('T', ' ')} – ${m.end_time.replace('T', ' ')}</span></div>
+      <div class="guest-view-row"><span class="k">${T('guest.viewLink')}</span><span class="v">${linkHtml}</span></div>
     `;
     viewOverlay.classList.add('open');
   }
@@ -347,10 +366,10 @@
 
   el('guestViewDeleteBtn').addEventListener('click', async () => {
     if (!viewingMeetingId) return;
-    if (!confirm('确定取消该预约吗？此操作无法撤销。')) return;
+    if (!confirm(T('guest.deleteConfirm'))) return;
     try {
       await api(`/meetings/${viewingMeetingId}`, { method: 'DELETE' });
-      toast('预约已取消');
+      toast(T('guest.deleted'));
       closeViewModal();
       await loadMeetings();
     } catch (err) {
@@ -359,12 +378,23 @@
   });
 
   // ---------------------------------------------------------------------
+  // Language toggle
+  // ---------------------------------------------------------------------
+  el('langToggleBtn').addEventListener('click', () => window.I18N.toggle());
+  document.addEventListener('i18n:change', () => {
+    renderDayTabs();
+    renderRoomTabs();
+    renderCalendar();
+  });
+
+  // ---------------------------------------------------------------------
   // Boot
   // ---------------------------------------------------------------------
   async function boot() {
+    window.I18N.applyStaticI18n(document);
     renderDayTabs();
     if (!window.FullCalendar) {
-      el('guestCalendar').innerHTML = '<div class="legend-hint" style="padding:30px 4px;">日历组件加载失败，请检查网络</div>';
+      el('guestCalendar').innerHTML = `<div class="legend-hint" style="padding:30px 4px;">${T('guest.calendarLoadFailed')}</div>`;
       return;
     }
     try {

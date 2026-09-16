@@ -12,6 +12,12 @@ html, body.guest-body {
   top: 0;
   z-index: 20;
 }
+.guest-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
 .guest-title {
   font-family: var(--serif);
   font-size: 20px;

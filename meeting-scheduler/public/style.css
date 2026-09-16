@@ -15,9 +15,13 @@
   --radius: 5px;
   --radius-lg: 8px;
 
-  --serif: "Songti SC", "STSong", "SimSun", Georgia, "Times New Roman", serif;
-  --sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei",
-    "Helvetica Neue", "Segoe UI", Arial, sans-serif;
+  /* Arial carries the Latin glyphs (English text renders in Arial); browsers
+     fall through to 微软雅黑 for any character Arial doesn't cover (Chinese
+     text renders in Microsoft YaHei) — one stack serves both languages.
+     --serif is aliased to the same stack: this app now uses a single clean
+     sans-serif typeface throughout rather than a serif/sans pairing. */
+  --sans: Arial, "Microsoft YaHei", "PingFang SC", "Helvetica Neue", "Segoe UI", sans-serif;
+  --serif: var(--sans);
 
   /* Room accent scale - from deep ink down to pale stone. */
   --room-1: #1c1b18;
@@ -75,6 +79,26 @@ a { color: var(--ink); }
   gap: 4px;
   margin-bottom: 2px;
 }
+
+.brand-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.lang-toggle {
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 4px 9px;
+  border-radius: 999px;
+  cursor: pointer;
+  letter-spacing: 0.02em;
+}
+.lang-toggle:hover { background: var(--bg-subtle); color: var(--ink); }
 
 .brand-title {
   font-family: var(--serif);
@@ -440,29 +464,6 @@ input:focus, select:focus, textarea:focus {
 }
 .event-card.compact .ev-host,
 .event-card.compact .ev-link { display: none; }
-
-/* Export mode (toggled on #calendarsContainer only while html2canvas is
-   capturing): every card — including compact ones — shows its full info,
-   so the exported image is a complete record even if that means cards
-   visually overlap their neighbour in the image. */
-#calendarsContainer.exporting .event-card.compact {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 2px;
-  padding: 6px 10px 7px;
-  position: relative;
-  z-index: 5;
-}
-#calendarsContainer.exporting .event-card.compact .ev-topic {
-  font-size: 13.5px;
-  white-space: normal;
-  overflow: visible;
-  text-overflow: unset;
-}
-#calendarsContainer.exporting .event-card.compact .ev-host,
-#calendarsContainer.exporting .event-card.compact .ev-link {
-  display: block;
-}
 
 .fc .fc-button {
   background: transparent;

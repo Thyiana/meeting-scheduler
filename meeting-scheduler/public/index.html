@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>会议室排期系统</title>
+<title>会议室排期系统 · Room Scheduler</title>
 <link rel="stylesheet" href="style.css" />
 
 <!-- FullCalendar 6 (国内 BootCDN，v6 起样式已内置，无需单独引入 css) -->
@@ -15,13 +15,11 @@
 <script src="https://cdn.bootcdn.net/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <!-- <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script> -->
 
-<!-- html2canvas，用于将排期表导出为图片 -->
-<script src="https://cdn.bootcdn.net/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<!-- <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script> -->
-
 <!-- qrcodejs，用于生成嘉宾邀请二维码 -->
 <script src="https://cdn.bootcdn.net/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <!-- <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script> -->
+
+<script src="i18n.js"></script>
 </head>
 <body>
 <div class="app-shell">
@@ -29,68 +27,68 @@
   <!-- ============ Sidebar ============ -->
   <aside class="sidebar">
     <div class="brand">
-      <div class="brand-title">会议室排期</div>
+      <div class="brand-row">
+        <div class="brand-title" data-i18n="admin.brandTitle">会议室排期</div>
+        <button id="langToggleBtn" class="lang-toggle" data-i18n-lang-label>EN</button>
+      </div>
       <div class="brand-range">2026-09-28 — 2026-10-01</div>
     </div>
 
     <div class="sidebar-section">
-      <h2>会议室</h2>
+      <h2 data-i18n="admin.rooms.heading">会议室</h2>
       <div id="roomList" class="room-list"></div>
       <form id="addRoomForm" class="add-room-form">
-        <input type="text" id="newRoomName" placeholder="新增会议室名称" autocomplete="off" />
-        <button type="submit" class="btn btn-sm">添加</button>
+        <input type="text" id="newRoomName" data-i18n-placeholder="admin.rooms.addPlaceholder" placeholder="新增会议室名称" autocomplete="off" />
+        <button type="submit" class="btn btn-sm" data-i18n="admin.rooms.addBtn">添加</button>
       </form>
-      <div class="legend-hint">勾选可在看板中筛选显示对应会议室；点击左侧色块可自定义该会议室的显示颜色</div>
+      <div class="legend-hint" data-i18n="admin.rooms.hint">勾选可在看板中筛选显示对应会议室；点击左侧色块可自定义该会议室的显示颜色</div>
     </div>
 
     <hr class="divider" />
 
     <div class="sidebar-section">
-      <h2>数据</h2>
-      <button id="btnAddMeeting" class="btn btn-block">+ 新建预约</button>
-      <button id="btnImport" class="btn btn-secondary btn-block">导入 Excel / CSV</button>
-      <input type="file" id="importFileInput" accept=".xlsx,.xls,.csv" />
-      <button id="btnExport" class="btn btn-secondary btn-block">导出当前排期 (.xlsx)</button>
+      <h2 data-i18n="admin.data.heading">数据</h2>
+      <button id="btnAddMeeting" class="btn btn-block" data-i18n="admin.data.addMeeting">+ 新建预约</button>
+      <button id="btnExport" class="btn btn-secondary btn-block" data-i18n="admin.data.export">导出当前排期 (.xlsx)</button>
     </div>
 
     <hr class="divider" />
 
     <div class="sidebar-section">
-      <h2>邀请嘉宾预约</h2>
-      <button id="btnInviteGuest" class="btn btn-secondary btn-block">生成邀请二维码</button>
-      <div class="legend-hint">嘉宾用手机扫码即可查看排期并自助预约会议室，无需安装任何东西；不能管理会议室或导入导出数据。</div>
+      <h2 data-i18n="admin.invite.heading">邀请嘉宾预约</h2>
+      <button id="btnInviteGuest" class="btn btn-secondary btn-block" data-i18n="admin.invite.btn">生成邀请二维码</button>
+      <div class="legend-hint" data-i18n="admin.invite.hint">嘉宾用手机扫码即可查看排期并自助预约会议室，无需安装任何东西；不能管理会议室或导入导出数据。</div>
     </div>
 
     <hr class="divider" />
 
     <div class="sidebar-section">
-      <h2>第三方日历同步</h2>
+      <h2 data-i18n="admin.ical.heading">第三方日历同步</h2>
       <div id="icalList" class="room-list"></div>
       <form id="addIcalForm" class="modal-form">
         <div class="field">
-          <label>同步源名称</label>
-          <input type="text" id="icalName" placeholder="例如：行政部日历" autocomplete="off" />
+          <label data-i18n="admin.ical.sourceName">同步源名称</label>
+          <input type="text" id="icalName" data-i18n-placeholder="admin.ical.sourceNamePlaceholder" placeholder="例如：行政部日历" autocomplete="off" />
         </div>
         <div class="field">
-          <label>iCal (.ics) URL</label>
+          <label data-i18n="admin.ical.url">iCal (.ics) URL</label>
           <input type="url" id="icalUrl" placeholder="https://..." autocomplete="off" />
         </div>
         <div class="field">
-          <label>写入到会议室</label>
+          <label data-i18n="admin.ical.targetRoom">写入到会议室</label>
           <select id="icalRoomSelect"></select>
         </div>
-        <button type="submit" class="btn btn-secondary btn-sm">添加同步源</button>
+        <button type="submit" class="btn btn-secondary btn-sm" data-i18n="admin.ical.addBtn">添加同步源</button>
       </form>
-      <div class="legend-hint">系统每 15 分钟自动异步同步一次，超时或出错会自动降级，不影响预约功能。</div>
+      <div class="legend-hint" data-i18n="admin.ical.hint">系统每 15 分钟自动异步同步一次，超时或出错会自动降级，不影响预约功能。</div>
     </div>
   </aside>
 
   <!-- ============ Main ============ -->
   <main class="main">
     <div class="toolbar">
-      <div class="toolbar-title">日程看板 · 00:00 – 24:00</div>
+      <div class="toolbar-title" data-i18n="admin.toolbar.title">日程看板 · 00:00 – 24:00</div>
       <div class="toolbar-actions">
-        <button id="btnExportImage" class="btn btn-secondary btn-sm">导出为图片</button>
         <span id="statusHint" class="legend-hint"></span>
       </div>
     </div>
@@ -105,55 +103,55 @@
 <div class="modal-overlay" id="meetingModalOverlay">
   <div class="modal">
     <div class="modal-header">
-      <h3 id="meetingModalTitle">新建预约</h3>
+      <h3 id="meetingModalTitle" data-i18n="admin.meeting.titleNew">新建预约</h3>
       <button class="modal-close" id="meetingModalClose">&times;</button>
     </div>
     <div class="error-text" id="meetingFormError"></div>
     <form class="modal-form" id="meetingForm">
       <input type="hidden" id="meetingId" />
       <div class="field">
-        <label for="meetingRoom">会议室</label>
+        <label for="meetingRoom" data-i18n="admin.meeting.room">会议室</label>
         <select id="meetingRoom" required></select>
       </div>
       <div class="field">
-        <label for="meetingTopic">会议主题</label>
+        <label for="meetingTopic" data-i18n="admin.meeting.topic">会议主题</label>
         <input type="text" id="meetingTopic" required autocomplete="off" />
       </div>
       <div class="field">
-        <label for="meetingHost">主持人 / 负责人</label>
+        <label for="meetingHost" data-i18n="admin.meeting.host">主持人 / 负责人</label>
         <input type="text" id="meetingHost" required autocomplete="off" />
       </div>
       <div class="modal-row">
         <div class="field">
-          <label for="meetingStart">开始时间</label>
+          <label for="meetingStart" data-i18n="admin.meeting.start">开始时间</label>
           <input type="datetime-local" id="meetingStart" required min="2026-09-28T00:00" max="2026-10-01T23:59" />
         </div>
         <div class="field">
-          <label for="meetingEnd">结束时间</label>
+          <label for="meetingEnd" data-i18n="admin.meeting.end">结束时间</label>
           <input type="datetime-local" id="meetingEnd" required min="2026-09-28T00:00" max="2026-10-01T23:59" />
         </div>
       </div>
       <div class="field">
-        <label for="meetingLink">参会人员名单链接</label>
-        <input type="url" id="meetingLink" placeholder="Excel / 文档 URL（选填）" autocomplete="off" />
+        <label for="meetingLink" data-i18n="admin.meeting.link">参会人员名单链接</label>
+        <input type="url" id="meetingLink" data-i18n-placeholder="admin.meeting.linkPlaceholder" placeholder="Excel / 文档 URL（选填）" autocomplete="off" />
       </div>
       <div class="field">
-        <label>卡片颜色</label>
+        <label data-i18n="admin.meeting.color">卡片颜色</label>
         <div class="color-pick-row">
-          <label class="room-swatch-label" title="点击自定义这场会议卡片的颜色">
+          <label class="room-swatch-label" data-i18n-title="admin.meeting.colorCustomTitle" title="点击自定义这场会议卡片的颜色">
             <input type="color" id="meetingCardColor" class="room-color-input" />
             <span id="meetingCardColorSwatch" class="room-swatch" style="height:22px;"></span>
           </label>
           <span id="meetingCardColorText" class="legend-hint"></span>
-          <button type="button" id="meetingColorResetBtn" class="btn btn-secondary btn-sm">恢复会议室默认色</button>
+          <button type="button" id="meetingColorResetBtn" class="btn btn-secondary btn-sm" data-i18n="admin.meeting.colorReset">恢复会议室默认色</button>
         </div>
       </div>
     </form>
     <div class="modal-footer">
-      <button id="meetingDeleteBtn" class="btn btn-danger btn-sm" style="display:none;">删除该预约</button>
+      <button id="meetingDeleteBtn" class="btn btn-danger btn-sm" style="display:none;" data-i18n="admin.meeting.delete">删除该预约</button>
       <div class="right">
-        <button id="meetingCancelBtn" class="btn btn-secondary btn-sm">取消</button>
-        <button id="meetingSaveBtn" class="btn btn-sm">保存</button>
+        <button id="meetingCancelBtn" class="btn btn-secondary btn-sm" data-i18n="common.cancel">取消</button>
+        <button id="meetingSaveBtn" class="btn btn-sm" data-i18n="common.save">保存</button>
       </div>
     </div>
   </div>
@@ -165,22 +163,22 @@
 <div class="modal-overlay" id="inviteModalOverlay">
   <div class="modal">
     <div class="modal-header">
-      <h3>邀请嘉宾扫码预约</h3>
+      <h3 data-i18n="admin.inviteModal.title">邀请嘉宾扫码预约</h3>
       <button class="modal-close" id="inviteModalClose">&times;</button>
     </div>
     <div class="field">
-      <label>选择本机在局域网中的地址</label>
+      <label data-i18n="admin.inviteModal.addressLabel">选择本机在局域网中的地址</label>
       <select id="inviteAddressSelect"></select>
     </div>
     <div id="inviteQrWrap" class="invite-qr-wrap"></div>
     <div class="field">
-      <label>嘉宾预约链接</label>
+      <label data-i18n="admin.inviteModal.linkLabel">嘉宾预约链接</label>
       <div class="invite-link-row">
         <input type="text" id="inviteLinkText" readonly />
-        <button id="inviteCopyBtn" class="btn btn-secondary btn-sm">复制</button>
+        <button id="inviteCopyBtn" class="btn btn-secondary btn-sm" data-i18n="common.copy">复制</button>
       </div>
     </div>
-    <div class="legend-hint">
+    <div class="legend-hint" data-i18n="admin.inviteModal.hint">
       嘉宾手机需连接同一个 Wi-Fi / 局域网才能扫码打开。该页面只能查看排期和新建预约，不能管理会议室或导入导出数据。
     </div>
   </div>

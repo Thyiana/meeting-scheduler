@@ -14,11 +14,11 @@ router.get('/', (req, res) => {
 // POST /api/rooms - create a room
 router.post('/', (req, res) => {
   const name = (req.body.name || '').trim();
-  if (!name) return res.status(400).json({ error: '会议室名称不能为空' });
+  if (!name) return res.status(400).json({ error: '会议室名称不能为空', code: 'ROOM_NAME_REQUIRED' });
 
   let color = (req.body.color || '').trim();
   if (color && !HEX_COLOR_RE.test(color)) {
-    return res.status(400).json({ error: '颜色格式不正确，应为 #RRGGBB' });
+    return res.status(400).json({ error: '颜色格式不正确，应为 #RRGGBB', code: 'ROOM_COLOR_INVALID' });
   }
   if (!color) {
     const roomCount = db.prepare('SELECT COUNT(*) AS c FROM rooms').get().c;
@@ -31,7 +31,7 @@ router.post('/', (req, res) => {
     res.status(201).json(room);
   } catch (err) {
     if (String(err.message).includes('UNIQUE')) {
-      return res.status(409).json({ error: '已存在同名会议室' });
+      return res.status(409).json({ error: '已存在同名会议室', code: 'ROOM_DUPLICATE' });
     }
     res.status(500).json({ error: '创建会议室失败' });
   }
@@ -43,7 +43,7 @@ router.post('/', (req, res) => {
 router.put('/:id', (req, res) => {
   const id = Number(req.params.id);
   const existing = db.prepare('SELECT id, name, color FROM rooms WHERE id = ?').get(id);
-  if (!existing) return res.status(404).json({ error: '会议室不存在' });
+  if (!existing) return res.status(404).json({ error: '会议室不存在', code: 'ROOM_NOT_FOUND' });
 
   const nameProvided = req.body.name !== undefined;
   const colorProvided = req.body.color !== undefined;
@@ -51,9 +51,9 @@ router.put('/:id', (req, res) => {
   const name = nameProvided ? String(req.body.name).trim() : existing.name;
   const color = colorProvided ? String(req.body.color).trim() : existing.color;
 
-  if (nameProvided && !name) return res.status(400).json({ error: '会议室名称不能为空' });
+  if (nameProvided && !name) return res.status(400).json({ error: '会议室名称不能为空', code: 'ROOM_NAME_REQUIRED' });
   if (colorProvided && !HEX_COLOR_RE.test(color)) {
-    return res.status(400).json({ error: '颜色格式不正确，应为 #RRGGBB' });
+    return res.status(400).json({ error: '颜色格式不正确，应为 #RRGGBB', code: 'ROOM_COLOR_INVALID' });
   }
 
   try {
@@ -62,7 +62,7 @@ router.put('/:id', (req, res) => {
     res.json(room);
   } catch (err) {
     if (String(err.message).includes('UNIQUE')) {
-      return res.status(409).json({ error: '已存在同名会议室' });
+      return res.status(409).json({ error: '已存在同名会议室', code: 'ROOM_DUPLICATE' });
     }
     res.status(500).json({ error: '更新会议室失败' });
   }
@@ -72,7 +72,7 @@ router.put('/:id', (req, res) => {
 router.delete('/:id', (req, res) => {
   const id = Number(req.params.id);
   const existing = db.prepare('SELECT id FROM rooms WHERE id = ?').get(id);
-  if (!existing) return res.status(404).json({ error: '会议室不存在' });
+  if (!existing) return res.status(404).json({ error: '会议室不存在', code: 'ROOM_NOT_FOUND' });
   db.prepare('DELETE FROM rooms WHERE id = ?').run(id);
   res.json({ ok: true });
 });

@@ -4,6 +4,8 @@
   const RANGE_START = '2026-09-28';
   const RANGE_END_EXCLUSIVE = '2026-10-02'; // FullCalendar validRange end is exclusive
   const FALLBACK_COLOR = '#1c1b18'; // used only if a room's color is somehow missing
+  const T = window.I18N.t;
+  const ERR = window.I18N.errorText;
 
   // If the next meeting in the same room starts less than this many minutes
   // after the current one starts, the current (earlier / "upper") card
@@ -67,8 +69,9 @@
     let data = null;
     try { data = await res.json(); } catch (e) { /* no body */ }
     if (!res.ok) {
-      const err = new Error((data && data.error) || `请求失败 (${res.status})`);
+      const err = new Error(ERR({ code: data && data.code, message: data && data.error }));
       err.status = res.status;
+      err.code = data && data.code;
       throw err;
     }
     return data;
@@ -93,7 +96,7 @@
 
       const swatchLabel = document.createElement('label');
       swatchLabel.className = 'room-swatch-label';
-      swatchLabel.title = '点击选择该会议室的显示颜色';
+      swatchLabel.title = T('admin.room.colorPickTitle');
 
       const swatch = document.createElement('span');
       swatch.className = 'room-swatch';
@@ -122,8 +125,6 @@
 
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
-      checkbox.checked = !state.selectedRoomIds.has(room.id) ? true : false;
-      // selectedRoomIds tracks HIDDEN rooms; default all visible
       checkbox.checked = !state.selectedRoomIds.has(room.id);
       checkbox.id = `room-chk-${room.id}`;
       checkbox.addEventListener('change', () => {
@@ -138,14 +139,14 @@
 
       const editBtn = document.createElement('button');
       editBtn.className = 'icon-btn';
-      editBtn.title = '重命名';
+      editBtn.title = T('admin.rooms.renamePrompt');
       editBtn.textContent = '✎';
       editBtn.type = 'button';
       editBtn.addEventListener('click', () => renameRoom(room));
 
       const delBtn = document.createElement('button');
       delBtn.className = 'icon-btn';
-      delBtn.title = '删除';
+      delBtn.title = T('common.delete');
       delBtn.textContent = '✕';
       delBtn.type = 'button';
       delBtn.addEventListener('click', () => deleteRoom(room));
@@ -170,7 +171,7 @@
   }
 
   async function renameRoom(room) {
-    const name = prompt('重命名会议室', room.name);
+    const name = prompt(T('admin.rooms.renamePrompt'), room.name);
     if (name === null) return;
     const trimmed = name.trim();
     if (!trimmed || trimmed === room.name) return;
@@ -178,19 +179,19 @@
       await api(`/rooms/${room.id}`, { method: 'PUT', body: JSON.stringify({ name: trimmed }) });
       await loadRooms();
       await loadMeetings();
-      toast('会议室已更新');
+      toast(T('admin.room.updated'));
     } catch (err) {
       toast(err.message, true);
     }
   }
 
   async function deleteRoom(room) {
-    if (!confirm(`确定删除「${room.name}」？该会议室下的所有预约也会被一并删除。`)) return;
+    if (!confirm(T('admin.rooms.deleteConfirm', { name: room.name }))) return;
     try {
       await api(`/rooms/${room.id}`, { method: 'DELETE' });
       await loadRooms();
       await loadMeetings();
-      toast('会议室已删除');
+      toast(T('admin.room.deleted'));
     } catch (err) {
       toast(err.message, true);
     }
@@ -205,7 +206,7 @@
       await api('/rooms', { method: 'POST', body: JSON.stringify({ name }) });
       input.value = '';
       await loadRooms();
-      toast('会议室已添加');
+      toast(T('admin.room.added'));
     } catch (err) {
       toast(err.message, true);
     }
@@ -248,9 +249,9 @@
   }
 
   // Rebuild the room columns. Called whenever the room list, meeting data,
-  // or the visible-rooms filter changes. Instances are destroyed and
-  // recreated each time — dataset is small so this stays instant, and it
-  // keeps the per-room filtering logic in one place.
+  // language, or the visible-rooms filter changes. Instances are destroyed
+  // and recreated each time — dataset is small so this stays instant, and
+  // it keeps the per-room filtering logic in one place.
   function renderCalendars() {
     roomCalendars.forEach((cal) => cal.destroy());
     roomCalendars.clear();
@@ -262,11 +263,15 @@
       const empty = document.createElement('div');
       empty.className = 'calendars-empty';
       empty.textContent = state.rooms.length
-        ? '所有会议室均已被筛选隐藏，请在左侧勾选要显示的会议室'
-        : '暂无会议室，请先在左侧添加';
+        ? T('admin.calendars.emptyFiltered')
+        : T('admin.calendars.emptyNoRooms');
       calendarsContainer.appendChild(empty);
       return;
     }
+
+    const fcLocale = window.I18N.getLang() === 'zh' ? 'zh-cn' : 'en';
+    const hostLabel = window.I18N.getLang() === 'zh' ? '主持：' : 'Host: ';
+    const linkLabel = window.I18N.getLang() === 'zh' ? '参会名单 ↗' : 'Attendee list ↗';
 
     visibleRooms.forEach((room) => {
       const col = document.createElement('div');
@@ -302,7 +307,7 @@
         nowIndicator: true,
         height: 'auto',
         expandRows: true,
-        locale: 'zh-cn',
+        locale: fcLocale,
         firstDay: 1,
         selectable: true,
         selectMirror: true,
@@ -326,12 +331,12 @@
           wrap.style.setProperty('--card-accent', cardColor);
           wrap.style.setProperty('--card-fill', hexToFill(cardColor));
           const linkHtml = m.attendee_link
-            ? `<a class="ev-link" href="${escapeHtml(m.attendee_link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">参会名单 ↗</a>`
+            ? `<a class="ev-link" href="${escapeHtml(m.attendee_link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${linkLabel}</a>`
             : '';
           wrap.innerHTML = `
             <div class="ev-time">${fmt(arg.event.start)} – ${fmt(arg.event.end)}</div>
             <div class="ev-topic">${escapeHtml(m.topic)}</div>
-            <div class="ev-host">主持：${escapeHtml(m.host)}</div>
+            <div class="ev-host">${hostLabel}${escapeHtml(m.host)}</div>
             ${linkHtml}
           `;
           return { domNodes: [wrap] };
@@ -358,7 +363,7 @@
   function syncCardColorUI(hex, touched) {
     el('meetingCardColor').value = hex;
     el('meetingCardColorSwatch').style.background = hex;
-    el('meetingCardColorText').textContent = touched ? '已自定义颜色' : '跟随会议室默认颜色';
+    el('meetingCardColorText').textContent = touched ? T('admin.meeting.colorCustom') : T('admin.meeting.colorDefault');
   }
 
   function openMeetingModal(meetingId, prefillRange) {
@@ -370,7 +375,7 @@
     if (meetingId) {
       const m = state.meetings.find((x) => x.id === meetingId);
       if (!m) return;
-      el('meetingModalTitle').textContent = '编辑预约';
+      el('meetingModalTitle').textContent = T('admin.meeting.titleEdit');
       el('meetingId').value = m.id;
       el('meetingRoom').value = m.room_id;
       el('meetingTopic').value = m.topic;
@@ -382,7 +387,7 @@
       state.colorTouched = !!m.card_color;
       syncCardColorUI(m.card_color || roomColor(m.room_id), state.colorTouched);
     } else {
-      el('meetingModalTitle').textContent = '新建预约';
+      el('meetingModalTitle').textContent = T('admin.meeting.titleNew');
       el('meetingId').value = '';
       el('meetingDeleteBtn').style.display = 'none';
       if (prefillRange) {
@@ -445,10 +450,10 @@
     try {
       if (id) {
         await api(`/meetings/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
-        toast('预约已更新');
+        toast(T('admin.meeting.updated'));
       } else {
         await api('/meetings', { method: 'POST', body: JSON.stringify(payload) });
-        toast('预约已创建');
+        toast(T('admin.meeting.created'));
       }
       closeMeetingModal();
       await loadMeetings();
@@ -461,10 +466,10 @@
   el('meetingDeleteBtn').addEventListener('click', async () => {
     const id = el('meetingId').value;
     if (!id) return;
-    if (!confirm('确定删除该预约？')) return;
+    if (!confirm(T('admin.meeting.deleteConfirm'))) return;
     try {
       await api(`/meetings/${id}`, { method: 'DELETE' });
-      toast('预约已删除');
+      toast(T('admin.meeting.deleted'));
       closeMeetingModal();
       await loadMeetings();
     } catch (err) {
@@ -492,36 +497,14 @@
   wireEnterNavigation(el('addIcalForm'));
 
   // ---------------------------------------------------------------------
-  // Import / Export
+  // Export to Excel
   // ---------------------------------------------------------------------
-  el('btnImport').addEventListener('click', () => el('importFileInput').click());
-
-  el('importFileInput').addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    e.target.value = '';
-    if (!file) return;
-    const fd = new FormData();
-    fd.append('file', file);
-    try {
-      const result = await api('/meetings/import', { method: 'POST', body: fd });
-      await loadRooms();
-      await loadMeetings();
-      const skippedMsg = result.skipped.length ? `，跳过 ${result.skipped.length} 条` : '';
-      toast(`导入完成：成功 ${result.imported} 条${skippedMsg}`);
-      if (result.skipped.length) console.table(result.skipped);
-    } catch (err) {
-      toast(err.message, true);
-    }
-  });
-
-  const WEEKDAY_NAMES = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-
   function splitDateTime(isoLike) {
     const d = new Date((isoLike || '').replace(' ', 'T'));
     const pad = (n) => String(n).padStart(2, '0');
     return {
       date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
-      weekday: WEEKDAY_NAMES[d.getDay()],
+      weekday: T(`weekday.${d.getDay()}`),
       time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
     };
   }
@@ -535,13 +518,13 @@
   function meetingRow(m, idx, includeRoom) {
     const start = splitDateTime(m.start_time);
     const end = splitDateTime(m.end_time);
-    const row = { '序号': idx + 1, '日期': start.date, '星期': start.weekday };
-    if (includeRoom) row['会议室'] = m.room_name;
-    row['开始时间'] = start.time;
-    row['结束时间'] = end.time;
-    row['主题'] = m.topic;
-    row['主持人'] = m.host;
-    row['名单链接'] = m.attendee_link || '';
+    const row = { [T('admin.export.col.no')]: idx + 1, [T('admin.export.col.date')]: start.date, [T('admin.export.col.weekday')]: start.weekday };
+    if (includeRoom) row[T('admin.export.col.room')] = m.room_name;
+    row[T('admin.export.col.start')] = start.time;
+    row[T('admin.export.col.end')] = end.time;
+    row[T('admin.export.col.topic')] = m.topic;
+    row[T('admin.export.col.host')] = m.host;
+    row[T('admin.export.col.link')] = m.attendee_link || '';
     return row;
   }
 
@@ -556,10 +539,11 @@
   }
 
   el('btnExport').addEventListener('click', () => {
-    if (!window.XLSX) { toast('导出组件加载失败，请检查网络', true); return; }
-    if (!state.meetings.length) { toast('暂无预约数据可导出', true); return; }
+    if (!window.XLSX) { toast(T('admin.export.notLoaded'), true); return; }
+    if (!state.meetings.length) { toast(T('admin.export.noData'), true); return; }
 
     const wb = XLSX.utils.book_new();
+    const overviewName = T('admin.export.sheetOverview');
 
     // Sheet 1: chronological overview across every room — a single index
     // to scan the whole four-day window at a glance.
@@ -567,11 +551,11 @@
       .slice()
       .sort((a, b) => a.start_time.localeCompare(b.start_time))
       .map((m, idx) => meetingRow(m, idx, true));
-    XLSX.utils.book_append_sheet(wb, buildSheet(overviewRows, true), '总览');
+    XLSX.utils.book_append_sheet(wb, buildSheet(overviewRows, true), overviewName);
 
     // One sheet per room, each sorted chronologically within that room —
     // easier to hand a single room's schedule to whoever manages it.
-    const usedSheetNames = new Set(['总览']);
+    const usedSheetNames = new Set([overviewName]);
     state.rooms.forEach((room) => {
       const roomMeetings = state.meetings
         .filter((m) => m.room_id === room.id)
@@ -579,7 +563,7 @@
         .sort((a, b) => a.start_time.localeCompare(b.start_time));
       if (!roomMeetings.length) return; // skip empty rooms, nothing to show
       const rows = roomMeetings.map((m, idx) => meetingRow(m, idx, false));
-      let sheetName = sanitizeSheetName(room.name, `会议室${room.id}`);
+      let sheetName = sanitizeSheetName(room.name, `Room${room.id}`);
       while (usedSheetNames.has(sheetName)) sheetName = `${sheetName}_`;
       usedSheetNames.add(sheetName);
       XLSX.utils.book_append_sheet(wb, buildSheet(rows, false), sheetName);
@@ -587,43 +571,9 @@
 
     const today = new Date();
     const pad = (n) => String(n).padStart(2, '0');
-    const filename = `会议室排期_${today.getFullYear()}${pad(today.getMonth() + 1)}${pad(today.getDate())}.xlsx`;
+    const filename = `meeting-schedule_${today.getFullYear()}${pad(today.getMonth() + 1)}${pad(today.getDate())}.xlsx`;
     XLSX.writeFile(wb, filename);
-    toast('已导出：总览 + 各会议室独立分表');
-  });
-
-  el('btnExportImage').addEventListener('click', async () => {
-    if (!window.html2canvas) { toast('导出组件加载失败，请检查网络', true); return; }
-    const target = el('calendarsContainer');
-    if (!target.children.length) { toast('暂无内容可导出', true); return; }
-    const btn = el('btnExportImage');
-    btn.disabled = true;
-    btn.textContent = '正在生成图片…';
-    // For export we want every meeting's full info visible, even the ones
-    // shown collapsed on screen to avoid overlapping their neighbour — so
-    // temporarily lift the compact styling for the capture only.
-    target.classList.add('exporting');
-    await new Promise((r) => requestAnimationFrame(r));
-    try {
-      const canvas = await html2canvas(target, {
-        backgroundColor: '#f6f5f2',
-        scale: 2,
-        useCORS: true,
-      });
-      const link = document.createElement('a');
-      const today = new Date();
-      const pad = (n) => String(n).padStart(2, '0');
-      link.download = `会议室排期_${today.getFullYear()}${pad(today.getMonth() + 1)}${pad(today.getDate())}.png`;
-      link.href = canvas.toDataURL('image/png');
-      link.click();
-      toast('图片已导出（含完整会议信息）');
-    } catch (err) {
-      toast('导出图片失败：' + err.message, true);
-    } finally {
-      target.classList.remove('exporting');
-      btn.disabled = false;
-      btn.textContent = '导出为图片';
-    }
+    toast(T('admin.export.done'));
   });
 
   // ---------------------------------------------------------------------
@@ -640,7 +590,7 @@
     if (!state.icalSources.length) {
       const empty = document.createElement('div');
       empty.className = 'legend-hint';
-      empty.textContent = '暂无同步源';
+      empty.textContent = T('admin.ical.empty');
       list.appendChild(empty);
       return;
     }
@@ -649,19 +599,19 @@
       row.className = 'ical-source-row';
       row.innerHTML = `
         <div class="name">${escapeHtml(src.name)}</div>
-        <div class="status">${src.last_sync_status ? escapeHtml(src.last_sync_status) : '尚未同步'}</div>
+        <div class="status">${src.last_sync_status ? escapeHtml(src.last_sync_status) : T('admin.ical.notSynced')}</div>
       `;
       const actions = document.createElement('div');
       actions.className = 'row-actions';
 
       const syncBtn = document.createElement('button');
       syncBtn.className = 'icon-btn';
-      syncBtn.textContent = '立即同步';
+      syncBtn.textContent = T('admin.ical.syncNow');
       syncBtn.type = 'button';
       syncBtn.addEventListener('click', async () => {
         try {
           await api(`/ical-sources/${src.id}/sync-now`, { method: 'POST' });
-          toast('已在后台开始同步，稍后刷新查看结果');
+          toast(T('admin.ical.syncStarted'));
           setTimeout(() => { loadIcalSources(); loadMeetings(); }, 4000);
         } catch (err) {
           toast(err.message, true);
@@ -670,10 +620,10 @@
 
       const delBtn = document.createElement('button');
       delBtn.className = 'icon-btn';
-      delBtn.textContent = '删除';
+      delBtn.textContent = T('admin.ical.deleteBtn');
       delBtn.type = 'button';
       delBtn.addEventListener('click', async () => {
-        if (!confirm(`删除同步源「${src.name}」？`)) return;
+        if (!confirm(T('admin.ical.deleteConfirm', { name: src.name }))) return;
         await api(`/ical-sources/${src.id}`, { method: 'DELETE' });
         await loadIcalSources();
       });
@@ -695,7 +645,7 @@
       el('icalName').value = '';
       el('icalUrl').value = '';
       await loadIcalSources();
-      toast('同步源已添加');
+      toast(T('admin.ical.added'));
     } catch (err) {
       toast(err.message, true);
     }
@@ -718,7 +668,7 @@
     const qrWrap = el('inviteQrWrap');
     qrWrap.innerHTML = '';
     if (!window.QRCode) {
-      qrWrap.textContent = '二维码组件加载失败，可直接复制下方链接发送给嘉宾';
+      qrWrap.textContent = T('admin.inviteModal.qrFailed');
       return;
     }
     qrInstance = new QRCode(qrWrap, {
@@ -734,7 +684,7 @@
   async function openInviteModal() {
     inviteOverlay.classList.add('open');
     const select = el('inviteAddressSelect');
-    select.innerHTML = '<option>加载中…</option>';
+    select.innerHTML = `<option>${T('common.loading')}</option>`;
     try {
       const info = await api('/server-info');
       state.serverPort = info.port;
@@ -761,20 +711,33 @@
     const text = el('inviteLinkText').value;
     try {
       await navigator.clipboard.writeText(text);
-      toast('链接已复制');
+      toast(T('admin.inviteModal.copied'));
     } catch (err) {
       el('inviteLinkText').select();
       document.execCommand('copy');
-      toast('链接已复制');
+      toast(T('admin.inviteModal.copied'));
     }
+  });
+
+  // ---------------------------------------------------------------------
+  // Language toggle
+  // ---------------------------------------------------------------------
+  el('langToggleBtn').addEventListener('click', () => window.I18N.toggle());
+  document.addEventListener('i18n:change', () => {
+    renderRoomList();
+    renderIcalList();
+    renderCalendars();
   });
 
   // ---------------------------------------------------------------------
   // Boot
   // ---------------------------------------------------------------------
   async function boot() {
+    window.I18N.applyStaticI18n(document);
     if (!window.FullCalendar) {
-      el('statusHint').textContent = 'FullCalendar 加载失败，请检查网络或 CDN 是否被拦截';
+      el('statusHint').textContent = window.I18N.getLang() === 'zh'
+        ? 'FullCalendar 加载失败，请检查网络或 CDN 是否被拦截'
+        : 'FullCalendar failed to load — check your network or CDN access';
       return;
     }
     try {

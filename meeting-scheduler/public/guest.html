@@ -3,18 +3,23 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
-<title>会议室预约 · 嘉宾端</title>
+<title>会议室预约 · Room Booking</title>
 <link rel="stylesheet" href="style.css" />
 <link rel="stylesheet" href="guest.css" />
 
 <!-- FullCalendar 6 (国内 BootCDN，v6 起样式已内置，无需单独引入 css) -->
 <script src="https://cdn.bootcdn.net/ajax/libs/fullcalendar/6.1.15/index.global.min.js"></script>
 <!-- <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script> -->
+
+<script src="i18n.js"></script>
 </head>
 <body class="guest-body">
 
 <header class="guest-header">
-  <div class="guest-title">会议室预约</div>
+  <div class="guest-header-row">
+    <div class="guest-title" data-i18n="guest.title">会议室预约</div>
+    <button id="langToggleBtn" class="lang-toggle" data-i18n-lang-label>EN</button>
+  </div>
   <div class="guest-range">2026-09-28 — 2026-10-01</div>
 </header>
 
@@ -25,51 +30,61 @@
   <div id="guestCalendar"></div>
 </main>
 
-<button id="guestAddBtn" class="guest-fab" type="button">+ 新建预约</button>
+<button id="guestAddBtn" class="guest-fab" type="button" data-i18n="guest.addBtn">+ 新建预约</button>
 
 <!-- ============ Booking Modal ============ -->
 <div class="modal-overlay" id="guestBookModalOverlay">
   <div class="modal">
     <div class="modal-header">
-      <h3 id="guestBookModalTitle">新建预约</h3>
+      <h3 id="guestBookModalTitle" data-i18n="guest.bookTitleNew">新建预约</h3>
       <button class="modal-close" id="guestBookModalClose">&times;</button>
     </div>
     <div class="error-text" id="guestFormError"></div>
     <form class="modal-form" id="guestBookForm">
       <input type="hidden" id="guestMeetingId" />
-      <input type="hidden" id="guestMeetingCardColor" />
       <div class="field">
-        <label for="guestRoom">会议室</label>
+        <label for="guestRoom" data-i18n="guest.room">会议室</label>
         <select id="guestRoom" required></select>
       </div>
       <div class="field">
-        <label for="guestTopic">会议主题</label>
+        <label for="guestTopic" data-i18n="guest.topic">会议主题</label>
         <input type="text" id="guestTopic" required autocomplete="off" />
       </div>
       <div class="field">
-        <label for="guestHost">姓名 / 主持人</label>
+        <label for="guestHost" data-i18n="guest.host">姓名 / 主持人</label>
         <input type="text" id="guestHost" required autocomplete="off" />
       </div>
       <div class="modal-row">
         <div class="field">
-          <label for="guestStart">开始时间</label>
+          <label for="guestStart" data-i18n="guest.start">开始时间</label>
           <input type="datetime-local" id="guestStart" required min="2026-09-28T00:00" max="2026-10-01T23:59" />
         </div>
         <div class="field">
-          <label for="guestEnd">结束时间</label>
+          <label for="guestEnd" data-i18n="guest.end">结束时间</label>
           <input type="datetime-local" id="guestEnd" required min="2026-09-28T00:00" max="2026-10-01T23:59" />
         </div>
       </div>
       <div class="field">
-        <label for="guestLink">参会人员名单链接</label>
-        <input type="url" id="guestLink" placeholder="Excel / 文档 URL（选填）" autocomplete="off" />
+        <label for="guestLink" data-i18n="guest.link">参会人员名单链接</label>
+        <input type="url" id="guestLink" data-i18n-placeholder="guest.linkPlaceholder" placeholder="Excel / 文档 URL（选填）" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label data-i18n="guest.color">卡片颜色</label>
+        <div class="color-pick-row">
+          <label class="room-swatch-label" data-i18n-title="guest.colorCustomTitle" title="点击自定义这场会议卡片的颜色">
+            <input type="color" id="guestCardColor" class="room-color-input" />
+            <span id="guestCardColorSwatch" class="room-swatch" style="height:22px;"></span>
+          </label>
+          <span id="guestCardColorText" class="legend-hint"></span>
+          <button type="button" id="guestColorResetBtn" class="btn btn-secondary btn-sm" data-i18n="guest.colorReset">恢复会议室默认色</button>
+        </div>
       </div>
     </form>
     <div class="modal-footer">
       <div></div>
       <div class="right">
-        <button id="guestCancelBtn" class="btn btn-secondary btn-sm">取消</button>
-        <button id="guestSaveBtn" class="btn btn-sm">提交预约</button>
+        <button id="guestCancelBtn" class="btn btn-secondary btn-sm" data-i18n="common.cancel">取消</button>
+        <button id="guestSaveBtn" class="btn btn-sm" data-i18n="guest.saveNew">提交预约</button>
       </div>
     </div>
   </div>
@@ -79,15 +94,15 @@
 <div class="modal-overlay" id="guestViewModalOverlay">
   <div class="modal">
     <div class="modal-header">
-      <h3>预约详情</h3>
+      <h3 data-i18n="guest.viewTitle">预约详情</h3>
       <button class="modal-close" id="guestViewModalClose">&times;</button>
     </div>
     <div class="guest-view-body" id="guestViewBody"></div>
     <div class="modal-footer">
-      <button id="guestViewDeleteBtn" class="btn btn-danger btn-sm">取消该预约</button>
+      <button id="guestViewDeleteBtn" class="btn btn-danger btn-sm" data-i18n="guest.deleteBtn">取消该预约</button>
       <div class="right">
-        <button id="guestViewEditBtn" class="btn btn-secondary btn-sm">编辑</button>
-        <button id="guestViewCloseBtn" class="btn btn-secondary btn-sm">关闭</button>
+        <button id="guestViewEditBtn" class="btn btn-secondary btn-sm" data-i18n="guest.editBtn">编辑</button>
+        <button id="guestViewCloseBtn" class="btn btn-secondary btn-sm" data-i18n="common.close">关闭</button>
       </div>
     </div>
   </div>

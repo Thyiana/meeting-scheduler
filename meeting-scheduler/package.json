@@ -16,9 +16,7 @@
   "dependencies": {
     "cors": "^2.8.6",
     "express": "^5.2.1",
-    "multer": "^2.3.0",
     "node-cron": "^4.6.0",
-    "node-ical": "^0.27.2",
-    "xlsx": "^0.18.5"
+    "node-ical": "^0.27.2"
   }
 }
