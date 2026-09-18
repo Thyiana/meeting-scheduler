@@ -2,8 +2,10 @@
   'use strict';
 
   const RANGE_START = '2026-09-28';
-  const RANGE_END_EXCLUSIVE = '2026-10-02'; // FullCalendar validRange end is exclusive
+  const RANGE_END_EXCLUSIVE = '2026-10-01'; // FullCalendar validRange end is exclusive
   const FALLBACK_COLOR = '#1c1b18'; // used only if a room's color is somehow missing
+  const POLL_INTERVAL_MS = 10000; // silent background refresh -> conflict-avoidance
+  const CLOCK_TICK_MS = 30000; // redraw the now-line / past-greyout / ongoing-pulse
   const T = window.I18N.t;
   const ERR = window.I18N.errorText;
 
@@ -16,9 +18,10 @@
   const state = {
     rooms: [],
     meetings: [],
-    icalSources: [],
     selectedRoomIds: new Set(), // empty set = show all
     editingMeetingId: null,
+    fullDay: false,
+    searchQuery: '',
   };
 
   const el = (id) => document.getElementById(id);
@@ -51,13 +54,40 @@
     return `rgba(${r}, ${g}, ${b}, 0.09)`;
   }
 
-  function roomFill(roomId) {
-    return hexToFill(roomColor(roomId));
-  }
-
   function fmtLocalInput(isoLike) {
     // "2026-09-28T09:00:00" -> "2026-09-28T09:00" for <input type=datetime-local>
     return (isoLike || '').slice(0, 16);
+  }
+
+  function fullDateLabel(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00');
+    return window.I18N.getLang() === 'zh'
+      ? `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`
+      : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  function classifyEvent(m) {
+    const now = new Date();
+    const start = new Date(m.start_time);
+    const end = new Date(m.end_time);
+    if (end <= now) return 'past';
+    if (start <= now && now < end) return 'ongoing';
+    return 'upcoming';
+  }
+
+  function showBufferWarning(warning) {
+    if (!warning) return;
+    const key = warning.code === 'BUFFER_TOO_SHORT_AFTER' ? 'buffer.warningAfter' : 'buffer.warningBefore';
+    setTimeout(() => toast(T(key, { minutes: warning.minutes, topic: warning.topic })), 3400);
+  }
+
+  let offline = false;
+  function setOffline(isOffline) {
+    if (offline === isOffline) return;
+    offline = isOffline;
+    el('statusHint').textContent = isOffline
+      ? (window.I18N.getLang() === 'zh' ? '网络已断开，正在离线显示上次缓存的数据' : 'Offline — showing last cached data')
+      : '';
   }
 
   async function api(path, options) {
@@ -65,7 +95,11 @@
       headers: options && options.body && !(options.body instanceof FormData)
         ? { 'Content-Type': 'application/json' } : undefined,
       ...options,
+    }).catch((networkErr) => {
+      setOffline(true);
+      throw networkErr;
     });
+    setOffline(false);
     let data = null;
     try { data = await res.json(); } catch (e) { /* no body */ }
     if (!res.ok) {
@@ -157,7 +191,7 @@
   }
 
   function renderRoomSelects() {
-    [el('meetingRoom'), el('icalRoomSelect')].forEach((select) => {
+    [el('meetingRoom')].forEach((select) => {
       const prevValue = select.value;
       select.innerHTML = '';
       state.rooms.forEach((room) => {
@@ -215,14 +249,24 @@
   // ---------------------------------------------------------------------
   // Meetings / Calendar
   // ---------------------------------------------------------------------
-  async function loadMeetings() {
-    state.meetings = await api('/meetings');
-    renderCalendars();
+  async function loadMeetings(silent) {
+    try {
+      state.meetings = await api('/meetings');
+      renderCalendars();
+    } catch (err) {
+      if (!silent) toast(err.message, true);
+    }
+  }
+
+  function matchesSearch(m) {
+    if (!state.searchQuery) return true;
+    const q = state.searchQuery.toLowerCase();
+    return (m.topic || '').toLowerCase().includes(q) || (m.host || '').toLowerCase().includes(q);
   }
 
   function eventsForRoom(roomId) {
     return state.meetings
-      .filter((m) => m.room_id === roomId)
+      .filter((m) => m.room_id === roomId && matchesSearch(m))
       .map((m) => ({
         id: String(m.id),
         title: m.topic,
@@ -248,10 +292,32 @@
     return compact;
   }
 
+  // Repositions the "now" time-label badge next to FullCalendar's built-in
+  // red line, for every visible room column.
+  function renderNowBadges() {
+    roomCalendars.forEach((cal, roomId) => {
+      const container = calendarsContainer.querySelector(`[data-room-id="${roomId}"] .room-col-body`);
+      if (!container) return;
+      const line = container.querySelector('.fc-timegrid-now-indicator-line');
+      if (!line) return;
+      let badge = container.querySelector('.now-badge');
+      if (!badge) {
+        badge = document.createElement('div');
+        badge.className = 'now-badge';
+        line.parentElement.appendChild(badge);
+      }
+      const now = new Date();
+      const pad = (n) => String(n).padStart(2, '0');
+      badge.textContent = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+      badge.style.top = line.style.top;
+    });
+  }
+
   // Rebuild the room columns. Called whenever the room list, meeting data,
-  // language, or the visible-rooms filter changes. Instances are destroyed
-  // and recreated each time — dataset is small so this stays instant, and
-  // it keeps the per-room filtering logic in one place.
+  // language, search query, 24H toggle, or the visible-rooms filter changes.
+  // Instances are destroyed and recreated each time — dataset is small so
+  // this stays instant, and it keeps the per-room filtering logic in one
+  // place.
   function renderCalendars() {
     roomCalendars.forEach((cal) => cal.destroy());
     roomCalendars.clear();
@@ -269,6 +335,13 @@
       return;
     }
 
+    if (state.searchQuery && !state.meetings.some(matchesSearch)) {
+      const empty = document.createElement('div');
+      empty.className = 'calendars-empty';
+      empty.textContent = T('admin.calendars.emptySearch', { query: state.searchQuery });
+      calendarsContainer.appendChild(empty);
+    }
+
     const fcLocale = window.I18N.getLang() === 'zh' ? 'zh-cn' : 'en';
     const hostLabel = window.I18N.getLang() === 'zh' ? '主持：' : 'Host: ';
     const linkLabel = window.I18N.getLang() === 'zh' ? '参会名单 ↗' : 'Attendee list ↗';
@@ -276,6 +349,7 @@
     visibleRooms.forEach((room) => {
       const col = document.createElement('div');
       col.className = 'room-calendar-col';
+      col.dataset.roomId = room.id;
 
       const header = document.createElement('div');
       header.className = 'room-col-header';
@@ -296,11 +370,11 @@
         initialView: 'fourDay',
         initialDate: RANGE_START,
         validRange: { start: RANGE_START, end: RANGE_END_EXCLUSIVE },
-        views: { fourDay: { type: 'timeGrid', duration: { days: 4 } } },
+        views: { fourDay: { type: 'timeGrid', duration: { days: 3 } } },
         headerToolbar: { left: '', center: '', right: '' },
-        dayHeaderFormat: { month: 'numeric', day: 'numeric', weekday: 'short' },
-        slotMinTime: '00:00:00',
-        slotMaxTime: '24:00:00',
+        dayHeaderContent: (arg) => fullDateLabel(arg.date.toISOString().slice(0, 10)) + ' ' + T(`weekday.${arg.date.getDay()}`),
+        slotMinTime: state.fullDay ? '00:00:00' : '08:00:00',
+        slotMaxTime: state.fullDay ? '24:00:00' : '20:00:00',
         slotDuration: '00:30:00',
         slotLabelInterval: '02:00:00',
         allDaySlot: false,
@@ -326,7 +400,11 @@
           const m = arg.event.extendedProps;
           const fmt = (d) => d.toTimeString().slice(0, 5);
           const wrap = document.createElement('div');
-          wrap.className = 'event-card' + (compactIds.has(m.id) ? ' compact' : '');
+          const cls = classifyEvent(m);
+          wrap.className = 'event-card'
+            + (compactIds.has(m.id) ? ' compact' : '')
+            + (cls === 'past' ? ' ev-past' : '')
+            + (cls === 'ongoing' ? ' ev-ongoing' : '');
           const cardColor = m.card_color || roomColor(room.id);
           wrap.style.setProperty('--card-accent', cardColor);
           wrap.style.setProperty('--card-fill', hexToFill(cardColor));
@@ -334,18 +412,48 @@
             ? `<a class="ev-link" href="${escapeHtml(m.attendee_link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${linkLabel}</a>`
             : '';
           wrap.innerHTML = `
-            <div class="ev-time">${fmt(arg.event.start)} – ${fmt(arg.event.end)}</div>
+            <div class="ev-time">${fmt(arg.event.start)} – ${fmt(arg.event.end)}${cls === 'ongoing' ? ' · ' + T('signage.ongoing') : ''}</div>
             <div class="ev-topic">${escapeHtml(m.topic)}</div>
             <div class="ev-host">${hostLabel}${escapeHtml(m.host)}</div>
             ${linkHtml}
           `;
           return { domNodes: [wrap] };
         },
+        eventDidMount: () => setTimeout(renderNowBadges, 0),
       });
       cal.render();
       roomCalendars.set(room.id, cal);
     });
+    setTimeout(renderNowBadges, 30);
   }
+
+  el('fullDayToggle').addEventListener('change', (e) => {
+    state.fullDay = e.target.checked;
+    renderCalendars();
+  });
+
+  let searchDebounce = null;
+  el('searchInput').addEventListener('input', (e) => {
+    clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(() => {
+      state.searchQuery = e.target.value.trim();
+      renderCalendars();
+    }, 200);
+  });
+
+  // Scrolls every visible room column to "now" (or, if nothing is
+  // scheduled around now, the first meeting of the range) so the operator
+  // doesn't have to hunt through a long day.
+  el('jumpNowBtn').addEventListener('click', () => {
+    const now = new Date();
+    const inRange = now >= new Date(RANGE_START) && now < new Date(RANGE_END_EXCLUSIVE);
+    let target = inRange ? now : null;
+    if (!target) {
+      const firstMeeting = state.meetings.slice().sort((a, b) => a.start_time.localeCompare(b.start_time))[0];
+      target = firstMeeting ? new Date(firstMeeting.start_time) : new Date(RANGE_START + 'T09:00:00');
+    }
+    roomCalendars.forEach((cal) => cal.scrollToTime({ hours: target.getHours(), minutes: target.getMinutes() }));
+  });
 
   function escapeHtml(str) {
     return String(str || '').replace(/[&<>"']/g, (c) => ({
@@ -359,6 +467,7 @@
   const overlay = el('meetingModalOverlay');
   const form = el('meetingForm');
   const formError = el('meetingFormError');
+  let editingUpdatedAt = null;
 
   function syncCardColorUI(hex, touched) {
     el('meetingCardColor').value = hex;
@@ -375,6 +484,7 @@
     if (meetingId) {
       const m = state.meetings.find((x) => x.id === meetingId);
       if (!m) return;
+      editingUpdatedAt = m.updated_at || null;
       el('meetingModalTitle').textContent = T('admin.meeting.titleEdit');
       el('meetingId').value = m.id;
       el('meetingRoom').value = m.room_id;
@@ -383,10 +493,12 @@
       el('meetingStart').value = fmtLocalInput(m.start_time);
       el('meetingEnd').value = fmtLocalInput(m.end_time);
       el('meetingLink').value = m.attendee_link || '';
+      el('meetingContact').value = m.contact || '';
       el('meetingDeleteBtn').style.display = '';
       state.colorTouched = !!m.card_color;
       syncCardColorUI(m.card_color || roomColor(m.room_id), state.colorTouched);
     } else {
+      editingUpdatedAt = null;
       el('meetingModalTitle').textContent = T('admin.meeting.titleNew');
       el('meetingId').value = '';
       el('meetingDeleteBtn').style.display = 'none';
@@ -444,22 +556,27 @@
       start_time: el('meetingStart').value,
       end_time: el('meetingEnd').value,
       attendee_link: el('meetingLink').value.trim(),
+      contact: el('meetingContact').value.trim(),
       card_color: state.colorTouched ? el('meetingCardColor').value : '',
     };
     const id = el('meetingId').value;
+    if (id && editingUpdatedAt) payload.expected_updated_at = editingUpdatedAt;
     try {
+      let result;
       if (id) {
-        await api(`/meetings/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+        result = await api(`/meetings/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
         toast(T('admin.meeting.updated'));
       } else {
-        await api('/meetings', { method: 'POST', body: JSON.stringify(payload) });
+        result = await api('/meetings', { method: 'POST', body: JSON.stringify(payload) });
         toast(T('admin.meeting.created'));
       }
       closeMeetingModal();
       await loadMeetings();
+      showBufferWarning(result && result.warning);
     } catch (err) {
       formError.textContent = err.message;
       formError.classList.add('show');
+      if (err.code === 'MEETING_STALE') await loadMeetings(true);
     }
   });
 
@@ -494,7 +611,6 @@
     });
   }
   wireEnterNavigation(form);
-  wireEnterNavigation(el('addIcalForm'));
 
   // ---------------------------------------------------------------------
   // Export to Excel
@@ -515,6 +631,9 @@
     return cleaned || fallback;
   }
 
+  // Column order matches the requested export spec: 日期 | 会议室 | 开始时间 |
+  // 结束时间 | 会议主题 | 主持人/主讲人 | 联系电话/备注 (attendee link kept as an
+  // extra trailing column since it's still useful and nothing asked to drop it).
   function meetingRow(m, idx, includeRoom) {
     const start = splitDateTime(m.start_time);
     const end = splitDateTime(m.end_time);
@@ -524,6 +643,7 @@
     row[T('admin.export.col.end')] = end.time;
     row[T('admin.export.col.topic')] = m.topic;
     row[T('admin.export.col.host')] = m.host;
+    row[T('admin.export.col.contact')] = m.contact || '';
     row[T('admin.export.col.link')] = m.attendee_link || '';
     return row;
   }
@@ -531,8 +651,8 @@
   function buildSheet(rows, includeRoom) {
     const ws = XLSX.utils.json_to_sheet(rows);
     ws['!cols'] = includeRoom
-      ? [{ wch: 6 }, { wch: 12 }, { wch: 7 }, { wch: 14 }, { wch: 10 }, { wch: 10 }, { wch: 26 }, { wch: 12 }, { wch: 32 }]
-      : [{ wch: 6 }, { wch: 12 }, { wch: 7 }, { wch: 10 }, { wch: 10 }, { wch: 26 }, { wch: 12 }, { wch: 32 }];
+      ? [{ wch: 6 }, { wch: 12 }, { wch: 7 }, { wch: 14 }, { wch: 10 }, { wch: 10 }, { wch: 26 }, { wch: 14 }, { wch: 18 }, { wch: 32 }]
+      : [{ wch: 6 }, { wch: 12 }, { wch: 7 }, { wch: 10 }, { wch: 10 }, { wch: 26 }, { wch: 14 }, { wch: 18 }, { wch: 32 }];
     // Freeze the header row so it stays visible while scrolling long sheets.
     ws['!freeze'] = { xSplit: 0, ySplit: 1 };
     return ws;
@@ -546,7 +666,7 @@
     const overviewName = T('admin.export.sheetOverview');
 
     // Sheet 1: chronological overview across every room — a single index
-    // to scan the whole four-day window at a glance.
+    // to scan the whole window at a glance.
     const overviewRows = state.meetings
       .slice()
       .sort((a, b) => a.start_time.localeCompare(b.start_time))
@@ -577,75 +697,52 @@
   });
 
   // ---------------------------------------------------------------------
-  // iCal sources
+  // Emergency banner
   // ---------------------------------------------------------------------
-  async function loadIcalSources() {
-    state.icalSources = await api('/ical-sources');
-    renderIcalList();
+  async function loadBanner() {
+    try {
+      const data = await api('/admin/announcement');
+      el('bannerText').value = data.message || '';
+    } catch (err) { /* best-effort */ }
   }
 
-  function renderIcalList() {
-    const list = el('icalList');
-    list.innerHTML = '';
-    if (!state.icalSources.length) {
-      const empty = document.createElement('div');
-      empty.className = 'legend-hint';
-      empty.textContent = T('admin.ical.empty');
-      list.appendChild(empty);
+  el('bannerForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const message = el('bannerText').value.trim();
+    try {
+      await api('/admin/announcement', { method: 'PUT', body: JSON.stringify({ message }) });
+      toast(T('admin.banner.published'));
+    } catch (err) {
+      toast(err.message, true);
+    }
+  });
+
+  el('bannerClearBtn').addEventListener('click', async () => {
+    el('bannerText').value = '';
+    try {
+      await api('/admin/announcement', { method: 'PUT', body: JSON.stringify({ message: '' }) });
+      toast(T('admin.banner.cleared'));
+    } catch (err) {
+      toast(err.message, true);
+    }
+  });
+
+  // ---------------------------------------------------------------------
+  // One-click reset (danger zone) — double-confirmed: a plain confirm(),
+  // then a prompt() requiring the operator to type RESET, so a single
+  // careless tap can never wipe the board seconds before doors open.
+  // ---------------------------------------------------------------------
+  el('btnReset').addEventListener('click', async () => {
+    if (!confirm(T('admin.reset.confirm1'))) return;
+    const typed = prompt(T('admin.reset.confirm2'));
+    if (typed !== T('admin.reset.confirmWord')) {
+      toast(T('admin.reset.cancelled'));
       return;
     }
-    state.icalSources.forEach((src) => {
-      const row = document.createElement('div');
-      row.className = 'ical-source-row';
-      row.innerHTML = `
-        <div class="name">${escapeHtml(src.name)}</div>
-        <div class="status">${src.last_sync_status ? escapeHtml(src.last_sync_status) : T('admin.ical.notSynced')}</div>
-      `;
-      const actions = document.createElement('div');
-      actions.className = 'row-actions';
-
-      const syncBtn = document.createElement('button');
-      syncBtn.className = 'icon-btn';
-      syncBtn.textContent = T('admin.ical.syncNow');
-      syncBtn.type = 'button';
-      syncBtn.addEventListener('click', async () => {
-        try {
-          await api(`/ical-sources/${src.id}/sync-now`, { method: 'POST' });
-          toast(T('admin.ical.syncStarted'));
-          setTimeout(() => { loadIcalSources(); loadMeetings(); }, 4000);
-        } catch (err) {
-          toast(err.message, true);
-        }
-      });
-
-      const delBtn = document.createElement('button');
-      delBtn.className = 'icon-btn';
-      delBtn.textContent = T('admin.ical.deleteBtn');
-      delBtn.type = 'button';
-      delBtn.addEventListener('click', async () => {
-        if (!confirm(T('admin.ical.deleteConfirm', { name: src.name }))) return;
-        await api(`/ical-sources/${src.id}`, { method: 'DELETE' });
-        await loadIcalSources();
-      });
-
-      actions.append(syncBtn, delBtn);
-      row.appendChild(actions);
-      list.appendChild(row);
-    });
-  }
-
-  el('addIcalForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const name = el('icalName').value.trim();
-    const url = el('icalUrl').value.trim();
-    const room_id = el('icalRoomSelect').value;
-    if (!name || !url) return;
     try {
-      await api('/ical-sources', { method: 'POST', body: JSON.stringify({ name, url, room_id }) });
-      el('icalName').value = '';
-      el('icalUrl').value = '';
-      await loadIcalSources();
-      toast(T('admin.ical.added'));
+      const result = await api('/admin/reset', { method: 'POST', body: JSON.stringify({ confirm: 'RESET' }) });
+      toast(T('admin.reset.done', { count: result.deleted }));
+      await loadMeetings();
     } catch (err) {
       toast(err.message, true);
     }
@@ -724,8 +821,8 @@
   // ---------------------------------------------------------------------
   el('langToggleBtn').addEventListener('click', () => window.I18N.toggle());
   document.addEventListener('i18n:change', () => {
+    el('brandRange').textContent = `${fullDateLabel(RANGE_START)} — ${fullDateLabel('2026-09-30')}`;
     renderRoomList();
-    renderIcalList();
     renderCalendars();
   });
 
@@ -734,19 +831,24 @@
   // ---------------------------------------------------------------------
   async function boot() {
     window.I18N.applyStaticI18n(document);
+    el('brandRange').textContent = `${fullDateLabel(RANGE_START)} — ${fullDateLabel('2026-09-30')}`;
     if (!window.FullCalendar) {
       el('statusHint').textContent = window.I18N.getLang() === 'zh'
         ? 'FullCalendar 加载失败，请检查网络或 CDN 是否被拦截'
         : 'FullCalendar failed to load — check your network or CDN access';
       return;
     }
+    window.addEventListener('online', () => setOffline(false));
+    window.addEventListener('offline', () => setOffline(true));
     try {
       await loadRooms();
       await loadMeetings();
-      await loadIcalSources();
+      await loadBanner();
     } catch (err) {
       toast(err.message, true);
     }
+    setInterval(() => loadMeetings(true), POLL_INTERVAL_MS); // silent conflict-avoidance refresh
+    setInterval(renderNowBadges, CLOCK_TICK_MS);
   }
 
   boot();

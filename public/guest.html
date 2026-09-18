@@ -4,6 +4,8 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
 <title>会议室预约 · Room Booking</title>
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#1c1b18" />
 <link rel="stylesheet" href="style.css" />
 <link rel="stylesheet" href="guest.css" />
 
@@ -20,10 +22,28 @@
     <div class="guest-title" data-i18n="guest.title">会议室预约</div>
     <button id="langToggleBtn" class="lang-toggle" data-i18n-lang-label>EN</button>
   </div>
-  <div class="guest-range">2026-09-28 — 2026-10-01</div>
+  <div class="guest-range" id="guestRangeText">2026-09-28 — 2026-09-30</div>
+  <div class="guest-tz" data-i18n="guest.tz">本会议室所有预约时间均以新加坡时间（SGT）为准</div>
 </header>
 
+<div class="announcement-banner" id="announcementBanner">
+  <span class="icon">📣</span>
+  <span id="announcementText"></span>
+</div>
+<div class="guest-offline-badge" id="offlineBadge" data-i18n="guest.offlineBadge">离线模式 · 显示的是最近一次缓存的排期</div>
+
 <nav class="guest-room-tabs" id="guestRoomTabs"></nav>
+<div class="guest-current-room" id="guestCurrentRoom">
+  <span class="label" data-i18n="guest.currentRoom">当前选择：</span>
+  <span id="guestCurrentRoomName"></span>
+</div>
+
+<div class="guest-day-tabs" style="padding-bottom:0;">
+  <label class="toggle-switch" style="margin-left:auto;">
+    <input type="checkbox" id="fullDayToggleGuest" />
+    <span data-i18n="admin.toolbar.fullDay">显示全天 (24H)</span>
+  </label>
+</div>
 <nav class="guest-day-tabs" id="guestDayTabs"></nav>
 
 <main class="guest-calendar-wrap">
@@ -54,19 +74,31 @@
         <label for="guestHost" data-i18n="guest.host">姓名 / 主持人</label>
         <input type="text" id="guestHost" required autocomplete="off" />
       </div>
-      <div class="modal-row">
+      <!-- Dropdown pickers instead of a tap-and-drag time grid: far harder
+           to mis-tap on a phone. Values are combined into hidden
+           datetime-local-shaped strings that the rest of the app already
+           knows how to read/validate. -->
+      <div class="field">
+        <label for="guestDate" data-i18n="guest.date">预约日期</label>
+        <select id="guestDate" required></select>
+      </div>
+      <div class="guest-picker-row">
         <div class="field">
-          <label for="guestStart" data-i18n="guest.start">开始时间</label>
-          <input type="datetime-local" id="guestStart" required min="2026-09-28T00:00" max="2026-10-01T23:59" />
+          <label for="guestStartTime" data-i18n="guest.startTime">开始时刻</label>
+          <select id="guestStartTime" required></select>
         </div>
         <div class="field">
-          <label for="guestEnd" data-i18n="guest.end">结束时间</label>
-          <input type="datetime-local" id="guestEnd" required min="2026-09-28T00:00" max="2026-10-01T23:59" />
+          <label for="guestEndTime" data-i18n="guest.endTime">结束时刻</label>
+          <select id="guestEndTime" required></select>
         </div>
       </div>
       <div class="field">
         <label for="guestLink" data-i18n="guest.link">参会人员名单链接</label>
         <input type="url" id="guestLink" data-i18n-placeholder="guest.linkPlaceholder" placeholder="Excel / 文档 URL（选填）" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label for="guestContact" data-i18n="guest.contact">联系电话 / 备注</label>
+        <input type="text" id="guestContact" data-i18n-placeholder="guest.contactPlaceholder" placeholder="例如：138xxxxxxxx（选填）" autocomplete="off" />
       </div>
       <div class="field">
         <label data-i18n="guest.color">卡片颜色</label>
@@ -98,6 +130,10 @@
       <button class="modal-close" id="guestViewModalClose">&times;</button>
     </div>
     <div class="guest-view-body" id="guestViewBody"></div>
+    <div class="guest-view-actions">
+      <button type="button" id="guestExportIcsBtn" class="btn btn-secondary btn-sm" data-i18n="guest.exportIcs">导出到日历 (.ics)</button>
+      <button type="button" id="guestExportGoogleBtn" class="btn btn-secondary btn-sm" data-i18n="guest.exportGoogle">添加到 Google Calendar</button>
+    </div>
     <div class="modal-footer">
       <button id="guestViewDeleteBtn" class="btn btn-danger btn-sm" data-i18n="guest.deleteBtn">取消该预约</button>
       <div class="right">
@@ -111,5 +147,6 @@
 <div class="toast" id="toast"></div>
 
 <script src="guest.js"></script>
+<script src="pwa.js"></script>
 </body>
 </html>

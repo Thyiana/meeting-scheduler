@@ -5,7 +5,7 @@ const router = express.Router();
 
 // The scheduler only manages this fixed window (inclusive of both dates).
 const VALID_RANGE_START = '2026-09-28T00:00:00';
-const VALID_RANGE_END = '2026-10-02T00:00:00'; // exclusive upper bound (end of 10-01)
+const VALID_RANGE_END = '2026-10-01T00:00:00'; // exclusive upper bound (end of 09-30)
 
 function inValidRange(iso) {
   return iso >= VALID_RANGE_START && iso <= VALID_RANGE_END;
@@ -34,6 +34,7 @@ function validateMeetingPayload(body) {
   const start_time = normalizeDateTime(body.start_time);
   const end_time = normalizeDateTime(body.end_time);
   const attendee_link = (body.attendee_link || '').trim();
+  const contact = (body.contact || '').trim().slice(0, 200);
 
   if (!room_id) return { error: '请选择会议室', code: 'MEETING_ROOM_REQUIRED' };
   if (!topic) return { error: '请输入会议主题', code: 'MEETING_TOPIC_REQUIRED' };
@@ -41,7 +42,7 @@ function validateMeetingPayload(body) {
   if (!start_time || !end_time) return { error: '开始/结束时间格式不正确', code: 'MEETING_TIME_INVALID' };
   if (start_time >= end_time) return { error: '结束时间必须晚于开始时间', code: 'MEETING_END_BEFORE_START' };
   if (!inValidRange(start_time) || !inValidRange(end_time)) {
-    return { error: '会议时间需在 2026-09-28 至 2026-10-01 排期区间内', code: 'MEETING_OUT_OF_RANGE' };
+    return { error: '会议时间需在 2026-09-28 至 2026-09-30 排期区间内', code: 'MEETING_OUT_OF_RANGE' };
   }
   const room = db.prepare('SELECT id FROM rooms WHERE id = ?').get(room_id);
   if (!room) return { error: '所选会议室不存在', code: 'MEETING_ROOM_NOT_FOUND' };
@@ -55,7 +56,35 @@ function validateMeetingPayload(body) {
     return { error: '卡片颜色格式不正确，应为 #RRGGBB', code: 'MEETING_COLOR_INVALID' };
   }
 
-  return { value: { room_id, topic, host, start_time, end_time, attendee_link, card_color } };
+  return { value: { room_id, topic, host, start_time, end_time, attendee_link, card_color, contact } };
+}
+
+// Buffer-time check is advisory only (never blocks a save): it looks at the
+// nearest other booking in the same room and, if it starts/ends within the
+// requested 15-minute buffer, returns a warning string the frontend shows
+// as a toast so the organizer can decide whether to adjust it themselves.
+const BUFFER_MINUTES = 15;
+function bufferWarning(room_id, start_time, end_time, excludeId) {
+  const neighbors = db.prepare(
+    `SELECT topic, start_time, end_time FROM meetings
+     WHERE room_id = ? AND id != COALESCE(?, -1)
+     ORDER BY start_time ASC`
+  ).all(room_id, excludeId || null);
+  const start = new Date(start_time);
+  const end = new Date(end_time);
+  for (const m of neighbors) {
+    const otherStart = new Date(m.start_time);
+    const otherEnd = new Date(m.end_time);
+    const gapBefore = (start - otherEnd) / 60000; // this meeting starts after other ends
+    const gapAfter = (otherStart - end) / 60000; // this meeting ends before other starts
+    if (gapBefore >= 0 && gapBefore < BUFFER_MINUTES) {
+      return { code: 'BUFFER_TOO_SHORT_BEFORE', minutes: Math.round(gapBefore), topic: m.topic };
+    }
+    if (gapAfter >= 0 && gapAfter < BUFFER_MINUTES) {
+      return { code: 'BUFFER_TOO_SHORT_AFTER', minutes: Math.round(gapAfter), topic: m.topic };
+    }
+  }
+  return null;
 }
 
 function hasConflict(room_id, start_time, end_time, excludeId) {
@@ -69,11 +98,15 @@ function hasConflict(room_id, start_time, end_time, excludeId) {
   return !!row;
 }
 
-// GET /api/meetings - list meetings (optionally filtered by range), joined with room name
+const MEETING_COLUMNS = `m.id, m.room_id, r.name AS room_name, m.topic, m.host,
+           m.start_time, m.end_time, m.attendee_link, m.contact, m.card_color, m.source, m.updated_at`;
+
+// GET /api/meetings - list meetings, joined with room name. Guest and admin
+// pages both poll this on a short interval for near-real-time updates, so
+// it stays a single cheap indexed query with no server-side pagination.
 router.get('/', (req, res) => {
   const rows = db.prepare(`
-    SELECT m.id, m.room_id, r.name AS room_name, m.topic, m.host,
-           m.start_time, m.end_time, m.attendee_link, m.card_color, m.source
+    SELECT ${MEETING_COLUMNS}
     FROM meetings m
     JOIN rooms r ON r.id = m.room_id
     ORDER BY m.start_time ASC
@@ -89,21 +122,29 @@ router.post('/', (req, res) => {
     return res.status(409).json({ error: '该会议室在此时间段已有预约，存在时间冲突', code: 'MEETING_CONFLICT' });
   }
   const info = db.prepare(`
-    INSERT INTO meetings (room_id, topic, host, start_time, end_time, attendee_link, card_color, source)
-    VALUES ($room_id, $topic, $host, $start_time, $end_time, $attendee_link, $card_color, 'manual')
+    INSERT INTO meetings (room_id, topic, host, start_time, end_time, attendee_link, contact, card_color, source)
+    VALUES ($room_id, $topic, $host, $start_time, $end_time, $attendee_link, $contact, $card_color, 'manual')
   `).run(value);
   const meeting = db.prepare(`
-    SELECT m.id, m.room_id, r.name AS room_name, m.topic, m.host, m.start_time, m.end_time, m.attendee_link, m.card_color, m.source
-    FROM meetings m JOIN rooms r ON r.id = m.room_id WHERE m.id = ?
+    SELECT ${MEETING_COLUMNS} FROM meetings m JOIN rooms r ON r.id = m.room_id WHERE m.id = ?
   `).get(info.lastInsertRowid);
-  res.status(201).json(meeting);
+  const warning = bufferWarning(value.room_id, value.start_time, value.end_time, meeting.id);
+  res.status(201).json({ ...meeting, warning });
 });
 
 // PUT /api/meetings/:id - update a meeting
 router.put('/:id', (req, res) => {
   const id = Number(req.params.id);
-  const existing = db.prepare('SELECT id FROM meetings WHERE id = ?').get(id);
+  const existing = db.prepare('SELECT id, updated_at FROM meetings WHERE id = ?').get(id);
   if (!existing) return res.status(404).json({ error: '预约不存在', code: 'MEETING_NOT_FOUND' });
+
+  // Optimistic concurrency: the client must echo back the updated_at it last
+  // saw. If someone else's edit landed in between (e.g. two people editing
+  // the same slot at once on a shaky connection), this catches it instead of
+  // silently overwriting their change.
+  if (req.body.expected_updated_at && req.body.expected_updated_at !== existing.updated_at) {
+    return res.status(409).json({ error: '该预约已被他人修改，请刷新后重试', code: 'MEETING_STALE' });
+  }
 
   const { error, code, value } = validateMeetingPayload(req.body);
   if (error) return res.status(400).json({ error, code });
@@ -114,15 +155,15 @@ router.put('/:id', (req, res) => {
     UPDATE meetings
     SET room_id = $room_id, topic = $topic, host = $host,
         start_time = $start_time, end_time = $end_time,
-        attendee_link = $attendee_link, card_color = $card_color, updated_at = datetime('now')
+        attendee_link = $attendee_link, contact = $contact, card_color = $card_color, updated_at = datetime('now')
     WHERE id = @id
   `).run({ ...value, id });
 
   const meeting = db.prepare(`
-    SELECT m.id, m.room_id, r.name AS room_name, m.topic, m.host, m.start_time, m.end_time, m.attendee_link, m.card_color, m.source
-    FROM meetings m JOIN rooms r ON r.id = m.room_id WHERE m.id = ?
+    SELECT ${MEETING_COLUMNS} FROM meetings m JOIN rooms r ON r.id = m.room_id WHERE m.id = ?
   `).get(id);
-  res.json(meeting);
+  const warning = bufferWarning(value.room_id, value.start_time, value.end_time, id);
+  res.json({ ...meeting, warning });
 });
 
 // DELETE /api/meetings/:id

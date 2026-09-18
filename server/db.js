@@ -70,15 +70,13 @@ CREATE INDEX IF NOT EXISTS idx_meetings_room ON meetings(room_id);
 CREATE INDEX IF NOT EXISTS idx_meetings_time ON meetings(start_time, end_time);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_meetings_external_uid ON meetings(external_uid) WHERE external_uid IS NOT NULL;
 
-CREATE TABLE IF NOT EXISTS ical_sources (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL,
-  url TEXT NOT NULL,
-  room_id INTEGER REFERENCES rooms(id) ON DELETE SET NULL,
-  enabled INTEGER NOT NULL DEFAULT 1,
-  last_synced_at TEXT,
-  last_sync_status TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+-- Small generic key/value store. Currently used for the single global
+-- "emergency banner" announcement shown on the guest page, but kept generic
+-- so future site-wide settings can reuse it without another migration.
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 `);
 
@@ -108,6 +106,11 @@ if (!roomColumns.includes('color')) {
 const meetingColumns = db.prepare('PRAGMA table_info(meetings)').all().map((c) => c.name);
 if (!meetingColumns.includes('card_color')) {
   db.exec('ALTER TABLE meetings ADD COLUMN card_color TEXT');
+}
+// "contact" holds a free-text phone number / note, shown in the Excel
+// export's "联系电话/备注" column and in the meeting detail views.
+if (!meetingColumns.includes('contact')) {
+  db.exec('ALTER TABLE meetings ADD COLUMN contact TEXT');
 }
 
 // Seed a couple of default rooms on first run so the UI is never empty.

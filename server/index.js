@@ -6,8 +6,7 @@ const cors = require('cors');
 require('./db'); // initialize DB + schema on boot
 const roomsRouter = require('./routes/rooms');
 const meetingsRouter = require('./routes/meetings');
-const icalRouter = require('./routes/ical');
-const { startIcalCron } = require('./cron');
+const adminRouter = require('./routes/admin');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -18,9 +17,13 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 
 app.use('/api/rooms', roomsRouter);
 app.use('/api/meetings', meetingsRouter);
-app.use('/api/ical-sources', icalRouter);
+app.use('/api/admin', adminRouter);
 
 app.get('/api/health', (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
+// Plain, unauthenticated liveness probe at a conventional path, so an
+// external "keep this Render Starter instance warm" pinger (UptimeRobot,
+// cron-job.org, etc.) can hit it without knowing anything about /api.
+app.get('/healthz', (req, res) => res.status(200).send('ok'));
 
 // Lets the admin page build a shareable LAN URL (and QR code) for guests to
 // scan, without anyone having to look up their own IP manually.
@@ -37,6 +40,8 @@ app.get('/api/server-info', (req, res) => {
 
 // Friendlier URL for the QR code / guest link than /guest.html
 app.get('/guest', (req, res) => res.redirect('/guest.html'));
+// Full-screen, sidebar-free kanban meant for a door-mounted iPad/TV.
+app.get('/signage', (req, res) => res.redirect('/signage.html'));
 
 // Centralized error handler so a thrown error in any route never leaves a
 // request hanging or crashes the process.
@@ -49,7 +54,7 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   console.log(`会议室排期系统已启动: http://localhost:${PORT}`);
   console.log(`嘉宾预约页面: http://localhost:${PORT}/guest`);
-  startIcalCron();
+  console.log(`门头看板模式: http://localhost:${PORT}/signage`);
 });
 
 // Belt-and-suspenders: never let an unexpected async error kill the whole

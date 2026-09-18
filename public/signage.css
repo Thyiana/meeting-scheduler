@@ -1,0 +1,69 @@
+html, body.signage-body {
+  height: 100%;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.signage-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 22px 36px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.signage-title {
+  font-family: var(--serif);
+  font-size: 26px;
+  font-weight: 500;
+}
+.signage-clock {
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
+}
+
+.signage-grid {
+  display: flex;
+  gap: 18px;
+  padding: 22px 24px;
+  height: calc(100vh - 90px);
+  overflow: hidden;
+}
+
+.signage-col {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.signage-col-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+.signage-col-header .room-swatch { width: 6px; height: 26px; }
+.signage-col-header .name { font-family: var(--serif); font-size: 22px; font-weight: 500; }
+
+.signage-col-body { flex: 1; padding: 8px 12px; overflow: hidden; }
+.signage-col-body .fc { width: 100%; height: 100%; font-size: 15px; }
+.signage-col-body .event-card .ev-topic { font-size: 16px; }
+.signage-col-body .event-card .ev-host { font-size: 13px; }
+.signage-col-body .event-card .ev-time { font-size: 12.5px; }
+
+.signage-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--ink-faint);
+  font-size: 20px;
+}

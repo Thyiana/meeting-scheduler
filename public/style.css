@@ -59,14 +59,20 @@ a { color: var(--ink); }
 .app-shell {
   display: grid;
   grid-template-columns: 300px 1fr;
+  grid-template-rows: 100vh;
   height: 100vh;
 }
 
 /* ---------- Sidebar ---------- */
+/* Fixed to the viewport height with its own overflow region, so the
+   sidebar's content scrolls internally instead of stretching the page and
+   producing a second, outer scrollbar alongside it. */
 .sidebar {
   border-right: 1px solid var(--border);
   padding: 34px 26px;
+  height: 100vh;
   overflow-y: auto;
+  overflow-x: hidden;
   background: var(--surface);
   display: flex;
   flex-direction: column;
@@ -143,6 +149,8 @@ a { color: var(--ink); }
   border: 1px solid transparent;
   border-radius: var(--radius);
 }
+.room-row > * { flex-shrink: 0; }
+.room-row label { flex-shrink: 1; }
 
 .room-row:hover { border-color: var(--border); background: var(--bg); }
 
@@ -200,11 +208,13 @@ a { color: var(--ink); }
 
 .add-room-form {
   display: flex;
+  flex-wrap: nowrap;
   gap: 7px;
   margin-top: 6px;
 }
 
-.add-room-form input { flex: 1; min-width: 0; }
+.add-room-form input { flex: 1 1 auto; min-width: 0; }
+.add-room-form button { flex: 0 0 auto; white-space: nowrap; }
 
 .btn {
   appearance: none;
@@ -493,10 +503,30 @@ input:focus, select:focus, textarea:focus {
   border-radius: var(--radius-lg);
   width: 440px;
   max-width: calc(100vw - 32px);
-  max-height: calc(100vh - 48px);
-  overflow-y: auto;
-  padding: 26px 28px 22px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
   box-shadow: 0 16px 40px rgba(28, 27, 24, 0.18);
+}
+.modal-header, .error-text { margin: 0; padding-left: 28px; padding-right: 28px; }
+.modal-header { padding-top: 26px; flex: 0 0 auto; }
+.error-text.show { margin: 0 28px 4px; }
+.modal-form {
+  padding: 0 28px;
+  overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+/* Sticky footer: stays above the on-screen keyboard on mobile instead of
+   being pushed off the bottom of the viewport by it. */
+.modal-footer {
+  flex: 0 0 auto;
+  padding: 14px 28px 22px;
+  margin-top: 0;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .modal-header {
@@ -504,7 +534,9 @@ input:focus, select:focus, textarea:focus {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 18px;
+  flex: 0 0 auto;
 }
+.error-text { flex: 0 0 auto; }
 .modal-header h3 {
   margin: 0;
   font-family: var(--serif);
@@ -517,7 +549,7 @@ input:focus, select:focus, textarea:focus {
 }
 .modal-close:hover { color: var(--ink); }
 
-.modal-form { display: flex; flex-direction: column; gap: 14px; }
+.modal-form { display: flex; flex-direction: column; gap: 14px; padding-top: 2px; padding-bottom: 20px; }
 .modal-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
 .modal-footer {
@@ -588,6 +620,101 @@ input:focus, select:focus, textarea:focus {
   font-size: 12.5px;
   color: var(--ink-soft);
   background: var(--bg-subtle);
+}
+
+/* ---------- Emergency banner (admin publish UI + guest/signage display) ---------- */
+.banner-form { display: flex; flex-direction: column; gap: 8px; }
+.banner-form textarea {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 9px 11px;
+  background: var(--surface);
+  resize: vertical;
+  min-height: 52px;
+}
+.banner-form .row { display: flex; gap: 8px; }
+.banner-form .row .btn { flex: 1; }
+
+.announcement-banner {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  background: #2f2415;
+  color: #fff2d9;
+  padding: 10px 16px;
+  font-size: 13px;
+  line-height: 1.4;
+  position: sticky;
+  top: 0;
+  z-index: 25;
+}
+.announcement-banner.show { display: flex; }
+.announcement-banner .icon { flex-shrink: 0; }
+
+/* ---------- Danger zone (reset) ---------- */
+.danger-zone-hint { margin-top: 2px; }
+
+/* ---------- Toolbar: search / 24h toggle / jump-now / signage / tz note ---------- */
+.toolbar { flex-wrap: wrap; row-gap: 10px; }
+.toolbar-left { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.toolbar-tz, .brand-tz {
+  font-size: 11.5px;
+  color: var(--ink-faint);
+}
+.toolbar-search {
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  padding: 7px 13px;
+  font-size: 13px;
+  width: 220px;
+  background: var(--surface);
+}
+.toggle-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  cursor: pointer;
+  user-select: none;
+}
+.toggle-switch input { accent-color: var(--ink); width: 15px; height: 15px; cursor: pointer; }
+.btn-link {
+  border: none;
+  background: none;
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 4px 2px;
+}
+.btn-link:hover { color: var(--ink); }
+
+/* ---------- Live "now" badge on the red indicator line ---------- */
+.now-badge {
+  position: absolute;
+  left: 2px;
+  transform: translateY(-50%);
+  background: #b23b2e;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 3px;
+  z-index: 5;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+.fc-timegrid-now-indicator-container { overflow: visible !important; }
+
+/* Ended meetings fade back; the currently-ongoing one gets a soft pulse so
+   it reads as "live" at a glance from across the room. */
+.event-card.ev-past { opacity: 0.45; filter: grayscale(0.5); }
+.event-card.ev-ongoing { animation: ev-breathe 2.4s ease-in-out infinite; }
+@keyframes ev-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(28, 27, 24, 0.0); }
+  50% { box-shadow: 0 0 0 3px rgba(178, 59, 46, 0.18); }
 }
 
 @media (max-width: 860px) {

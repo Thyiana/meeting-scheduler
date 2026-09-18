@@ -1,0 +1,11 @@
+{
+  "name": "会议室排期系统 Room Scheduler",
+  "short_name": "会议室排期",
+  "start_url": "/guest",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f6f5f2",
+  "theme_color": "#1c1b18",
+  "lang": "zh-CN",
+  "icons": []
+}

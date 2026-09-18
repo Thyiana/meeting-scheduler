@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>门头看板 · Signage</title>
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#1c1b18" />
+<link rel="stylesheet" href="style.css" />
+<link rel="stylesheet" href="signage.css" />
+
+<script src="https://cdn.bootcdn.net/ajax/libs/fullcalendar/6.1.15/index.global.min.js"></script>
+<!-- <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script> -->
+
+<script src="i18n.js"></script>
+</head>
+<body class="signage-body">
+
+<header class="signage-header">
+  <div class="signage-title" data-i18n="admin.brandTitle">会议室排期</div>
+  <div class="signage-clock" id="signageClock"></div>
+</header>
+
+<div class="announcement-banner" id="announcementBanner">
+  <span class="icon">📣</span>
+  <span id="announcementText"></span>
+</div>
+
+<main class="signage-grid" id="signageGrid"></main>
+
+<script src="signage.js"></script>
+<script src="pwa.js"></script>
+</body>
+</html>
