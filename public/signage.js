@@ -13,12 +13,41 @@
   const grid = el('signageGrid');
   const calendars = new Map();
 
-  // Shows "today" if it falls inside the managed window, otherwise the
-  // first day of the range (e.g. before the event starts, or after it ends
-  // the board still shows something meaningful rather than a blank error).
-  function activeDate() {
+  // Shows "today" by default if it falls inside the managed window,
+  // otherwise the first day of the range — but the operator can manually
+  // switch days via the tab bar below (state.selectedDate), which always
+  // wins once they've touched it.
+  function defaultDate() {
     const todayStr = new Date().toISOString().slice(0, 10);
     return DAY_DATES.includes(todayStr) ? todayStr : DAY_DATES[0];
+  }
+
+  const state = { rooms: [], meetings: [], selectedDate: defaultDate() };
+
+  function todayStr() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  function dayLabel(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00');
+    return `${d.getMonth() + 1}/${d.getDate()} ${T(`weekday.${d.getDay()}`)}`;
+  }
+
+  function renderDayTabs() {
+    const wrap = el('signageDayTabs');
+    wrap.innerHTML = '';
+    DAY_DATES.forEach((date) => {
+      const tab = document.createElement('button');
+      tab.type = 'button';
+      tab.className = 'signage-tab' + (date === state.selectedDate ? ' active' : '');
+      tab.innerHTML = dayLabel(date) + (date === todayStr() ? ' <span class="today-mark">TODAY</span>' : '');
+      tab.addEventListener('click', () => {
+        state.selectedDate = date;
+        renderDayTabs();
+        renderGrid();
+      });
+      wrap.appendChild(tab);
+    });
   }
 
   function escapeHtml(str) {
@@ -43,8 +72,6 @@
     if (start <= now && now < end) return 'ongoing';
     return 'upcoming';
   }
-
-  const state = { rooms: [], meetings: [] };
 
   async function api(path) {
     const res = await fetch('/api' + path);
@@ -88,7 +115,7 @@
 
     const fcLocale = window.I18N.getLang() === 'zh' ? 'zh-cn' : 'en';
     const hostLabel = window.I18N.getLang() === 'zh' ? '主持：' : 'Host: ';
-    const date = activeDate();
+    const date = state.selectedDate;
 
     state.rooms.forEach((room) => {
       const col = document.createElement('div');
@@ -176,7 +203,12 @@
   async function boot() {
     window.I18N.applyStaticI18n(document);
     renderClock();
+    renderDayTabs();
     setInterval(renderClock, CLOCK_TICK_MS);
+    // Re-render tabs once a minute — purely so the "TODAY" marker jumps to
+    // the right tab automatically at midnight without a manual refresh,
+    // since this page is meant to run unattended for days at a time.
+    setInterval(renderDayTabs, 60000);
     await loadAll();
     pollAnnouncement();
     setInterval(() => loadAll(true), POLL_INTERVAL_MS);

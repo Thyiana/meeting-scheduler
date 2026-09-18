@@ -23,11 +23,39 @@ html, body.signage-body {
   color: var(--ink-soft);
 }
 
+.signage-day-tabs {
+  display: flex;
+  gap: 10px;
+  padding: 12px 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.signage-day-tabs .signage-tab {
+  padding: 8px 18px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: 15px;
+  cursor: pointer;
+}
+.signage-day-tabs .signage-tab.active {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #fff;
+  font-weight: 500;
+}
+.signage-day-tabs .signage-tab .today-mark {
+  font-size: 11px;
+  opacity: 0.75;
+  margin-left: 4px;
+}
+
 .signage-grid {
   display: flex;
   gap: 18px;
   padding: 22px 24px;
-  height: calc(100vh - 90px);
+  height: calc(100vh - 145px);
   overflow: hidden;
 }
 
