@@ -98,6 +98,56 @@ function hasConflict(room_id, start_time, end_time, excludeId) {
   return !!row;
 }
 
+function toLocalIso(date) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+// When a booking is rejected for conflicting with an existing one, this
+// looks for two things a frustrated organizer would immediately want to
+// know instead of just "no": (1) the next free slot of the same length in
+// the *same* room, and (2) which *other* rooms are free at the exact time
+// they originally asked for. Both are best-effort — a null/empty result
+// just means "nothing else to suggest", never an error.
+function findAlternatives(room_id, start_time, end_time, excludeId) {
+  const durationMs = new Date(end_time) - new Date(start_time);
+
+  // (1) Walk forward through this room's existing bookings (on or after the
+  // requested start) looking for the first gap big enough to fit the same
+  // duration. Bounded to the managed window and a sane number of hops so a
+  // pathologically double-booked room can never loop for long.
+  const roomMeetings = db.prepare(
+    `SELECT start_time, end_time FROM meetings
+     WHERE room_id = ? AND id != COALESCE(?, -1) AND end_time > ?
+     ORDER BY start_time ASC LIMIT 200`
+  ).all(room_id, excludeId || null, start_time);
+
+  let cursor = new Date(start_time);
+  let nextFreeSlot = null;
+  for (const m of roomMeetings) {
+    const mStart = new Date(m.start_time);
+    const mEnd = new Date(m.end_time);
+    if (mStart - cursor >= durationMs) { nextFreeSlot = { start: cursor, end: new Date(cursor.getTime() + durationMs) }; break; }
+    if (mEnd > cursor) cursor = mEnd;
+  }
+  if (!nextFreeSlot) {
+    const candidateEnd = new Date(cursor.getTime() + durationMs);
+    if (toLocalIso(candidateEnd) <= VALID_RANGE_END) {
+      nextFreeSlot = { start: cursor, end: candidateEnd };
+    }
+  }
+
+  // (2) Any other room that's free for the exact time originally requested.
+  const freeRoomNames = db.prepare('SELECT id, name FROM rooms WHERE id != ? ORDER BY id ASC').all(room_id)
+    .filter((r) => !hasConflict(r.id, start_time, end_time))
+    .map((r) => r.name);
+
+  return {
+    nextFreeSlot: nextFreeSlot ? { start_time: toLocalIso(nextFreeSlot.start), end_time: toLocalIso(nextFreeSlot.end) } : null,
+    freeRooms: freeRoomNames.slice(0, 5), // a long list stops being useful as a quick suggestion
+  };
+}
+
 const MEETING_COLUMNS = `m.id, m.room_id, r.name AS room_name, m.topic, m.host,
            m.start_time, m.end_time, m.attendee_link, m.contact, m.card_color, m.source, m.updated_at`;
 
@@ -119,7 +169,11 @@ router.post('/', (req, res) => {
   const { error, code, value } = validateMeetingPayload(req.body);
   if (error) return res.status(400).json({ error, code });
   if (hasConflict(value.room_id, value.start_time, value.end_time)) {
-    return res.status(409).json({ error: '该会议室在此时间段已有预约，存在时间冲突', code: 'MEETING_CONFLICT' });
+    return res.status(409).json({
+      error: '该会议室在此时间段已有预约，存在时间冲突',
+      code: 'MEETING_CONFLICT',
+      ...findAlternatives(value.room_id, value.start_time, value.end_time),
+    });
   }
   const info = db.prepare(`
     INSERT INTO meetings (room_id, topic, host, start_time, end_time, attendee_link, contact, card_color, source)
@@ -149,7 +203,11 @@ router.put('/:id', (req, res) => {
   const { error, code, value } = validateMeetingPayload(req.body);
   if (error) return res.status(400).json({ error, code });
   if (hasConflict(value.room_id, value.start_time, value.end_time, id)) {
-    return res.status(409).json({ error: '该会议室在此时间段已有预约，存在时间冲突', code: 'MEETING_CONFLICT' });
+    return res.status(409).json({
+      error: '该会议室在此时间段已有预约，存在时间冲突',
+      code: 'MEETING_CONFLICT',
+      ...findAlternatives(value.room_id, value.start_time, value.end_time, id),
+    });
   }
   db.prepare(`
     UPDATE meetings
@@ -166,7 +224,48 @@ router.put('/:id', (req, res) => {
   res.json({ ...meeting, warning });
 });
 
-// DELETE /api/meetings/:id
+// POST /api/meetings/bulk - import many meetings at once (used by the
+// admin "导入 Excel" feature). Each row is validated and conflict-checked
+// independently and inserted immediately if it passes — a bad row never
+// blocks the good ones, since realistically an imported spreadsheet is a
+// mix of clean data and a few mistakes that need calling out individually.
+// Accepts room_id OR room_name per row (name is resolved case-insensitively
+// against existing rooms) since a spreadsheet naturally has room names, not
+// internal IDs.
+router.post('/bulk', (req, res) => {
+  const rows = Array.isArray(req.body.meetings) ? req.body.meetings.slice(0, 1000) : null;
+  if (!rows) return res.status(400).json({ error: '请提供 meetings 数组', code: 'BULK_PAYLOAD_INVALID' });
+
+  const rooms = db.prepare('SELECT id, name FROM rooms').all();
+  const roomByName = new Map(rooms.map((r) => [r.name.trim().toLowerCase(), r.id]));
+
+  const results = rows.map((row, index) => {
+    const body = { ...row };
+    if (!body.room_id && body.room_name) {
+      const matchId = roomByName.get(String(body.room_name).trim().toLowerCase());
+      if (!matchId) return { index, ok: false, error: `找不到会议室"${body.room_name}"`, code: 'MEETING_ROOM_NOT_FOUND' };
+      body.room_id = matchId;
+    }
+    const { error, code, value } = validateMeetingPayload(body);
+    if (error) return { index, ok: false, error, code };
+    if (hasConflict(value.room_id, value.start_time, value.end_time)) {
+      return {
+        index, ok: false, error: '该会议室在此时间段已有预约，存在时间冲突', code: 'MEETING_CONFLICT',
+        ...findAlternatives(value.room_id, value.start_time, value.end_time),
+      };
+    }
+    const info = db.prepare(`
+      INSERT INTO meetings (room_id, topic, host, start_time, end_time, attendee_link, contact, card_color, source)
+      VALUES ($room_id, $topic, $host, $start_time, $end_time, $attendee_link, $contact, $card_color, 'import')
+    `).run(value);
+    return { index, ok: true, id: info.lastInsertRowid };
+  });
+
+  const imported = results.filter((r) => r.ok).length;
+  res.json({ imported, failed: results.length - imported, results });
+});
+
+
 router.delete('/:id', (req, res) => {
   const id = Number(req.params.id);
   const existing = db.prepare('SELECT id FROM meetings WHERE id = ?').get(id);

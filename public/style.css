@@ -34,6 +34,35 @@
   font-size: 16px;
 }
 
+/* ---------- Dark mode ----------
+   Toggled by theme.js via data-theme on <html>. Every color elsewhere in
+   this file is expressed through the variables above, so overriding them
+   here is enough to re-theme the whole app without touching component
+   rules — the one deliberate exception is FullCalendar's own --fc-* custom
+   properties, which are already sourced from these same variables further
+   down (.fc { ... }), so they re-theme automatically too. */
+html[data-theme="dark"] {
+  --bg: #171613;
+  --bg-subtle: #201f1b;
+  --surface: #201f1b;
+  --border: #34322b;
+  --border-strong: #47443a;
+  --ink: #ece9e1;
+  --ink-soft: #b6b1a4;
+  --ink-faint: #7d786c;
+  --danger: #e2685a;
+  --danger-bg: #3a2420;
+  --focus: #ece9e1;
+}
+html[data-theme="dark"] .fc {
+  --fc-today-bg-color: #2a2822;
+}
+/* A couple of rules elsewhere use a literal color rather than a variable
+   (box-shadow tints, the today-highlight); dark-specific fixes for those
+   live here rather than sprinkled throughout the file. */
+html[data-theme="dark"] .modal-overlay { background: rgba(0, 0, 0, 0.55); }
+html[data-theme="dark"] ::selection { background: #4a4636; }
+
 * { box-sizing: border-box; }
 
 html, body {
@@ -92,6 +121,8 @@ a { color: var(--ink); }
   justify-content: space-between;
   gap: 8px;
 }
+
+.header-btns { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 
 .lang-toggle {
   border: 1px solid var(--border-strong);
@@ -572,6 +603,39 @@ input:focus, select:focus, textarea:focus {
 }
 .error-text.show { display: block; }
 
+/* Extra lines under a 409 conflict error: "nearest free slot" / "other free
+   rooms" — visually distinct from the plain error text so they read as
+   suggestions rather than more error detail. */
+.conflict-suggestion {
+  font-size: 12px;
+  color: inherit;
+  opacity: 0.85;
+  margin-top: 4px;
+}
+
+/* ---------- Backups list ---------- */
+.backup-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+.backup-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border-radius: var(--radius);
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  text-decoration: none;
+  border: 1px solid transparent;
+}
+.backup-row:hover { background: var(--bg-subtle); border-color: var(--border); color: var(--ink); }
+.backup-row .backup-time { font-variant-numeric: tabular-nums; }
+.backup-row .backup-dl { font-size: 11px; opacity: 0.7; }
+
 .toast {
   position: fixed;
   bottom: 24px;
@@ -650,6 +714,14 @@ input:focus, select:focus, textarea:focus {
 }
 .announcement-banner.show { display: flex; }
 .announcement-banner .icon { flex-shrink: 0; }
+/* Room-specific banner sits directly below the sticky global one, in normal
+   flow rather than sticky itself — two independently-sticky bars stacked at
+   top:0 would overlap each other on scroll. */
+.announcement-banner.room-banner {
+  position: static;
+  background: #3a2f1a;
+  color: #ffe8bf;
+}
 
 /* ---------- Danger zone (reset) ---------- */
 .danger-zone-hint { margin-top: 2px; }

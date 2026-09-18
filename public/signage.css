@@ -17,6 +17,7 @@ html, body.signage-body {
   font-size: 26px;
   font-weight: 500;
 }
+.signage-header-right { display: flex; align-items: center; gap: 14px; }
 .signage-clock {
   font-size: 22px;
   font-variant-numeric: tabular-nums;
@@ -80,6 +81,14 @@ html, body.signage-body {
 }
 .signage-col-header .room-swatch { width: 6px; height: 26px; }
 .signage-col-header .name { font-family: var(--serif); font-size: 22px; font-weight: 500; }
+
+.signage-room-banner {
+  padding: 8px 20px;
+  background: #3a2f1a;
+  color: #ffe8bf;
+  font-size: 13.5px;
+  flex: 0 0 auto;
+}
 
 .signage-col-body { flex: 1; padding: 8px 12px; overflow: hidden; }
 .signage-col-body .fc { width: 100%; height: 100%; font-size: 15px; }

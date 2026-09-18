@@ -7,6 +7,7 @@
 <link rel="manifest" href="manifest.json" />
 <meta name="theme-color" content="#1c1b18" />
 <link rel="stylesheet" href="style.css" />
+<script src="theme.js"></script>
 
 <!-- FullCalendar 6 (国内 BootCDN，v6 起样式已内置，无需单独引入 css) -->
 <script src="https://cdn.bootcdn.net/ajax/libs/fullcalendar/6.1.15/index.global.min.js"></script>
@@ -31,7 +32,10 @@
     <div class="brand">
       <div class="brand-row">
         <div class="brand-title" data-i18n="admin.brandTitle">会议室排期</div>
-        <button id="langToggleBtn" class="lang-toggle" data-i18n-lang-label>EN</button>
+        <div class="header-btns">
+          <button id="themeToggleBtn" class="lang-toggle" type="button" title="深色模式">🌙</button>
+          <button id="langToggleBtn" class="lang-toggle" data-i18n-lang-label>EN</button>
+        </div>
       </div>
       <div class="brand-range" id="brandRange">2026-09-28 — 2026-09-30</div>
       <div class="toolbar-tz" data-i18n="admin.toolbar.tz">本会议室所有预约时间均以新加坡时间（SGT）为准</div>
@@ -53,6 +57,9 @@
       <h2 data-i18n="admin.data.heading">数据</h2>
       <button id="btnAddMeeting" class="btn btn-block" data-i18n="admin.data.addMeeting">+ 新建预约</button>
       <button id="btnExport" class="btn btn-secondary btn-block" data-i18n="admin.data.export">导出当前排期 (.xlsx)</button>
+      <button id="btnImport" class="btn btn-secondary btn-block" data-i18n="admin.data.import">导入 Excel</button>
+      <input type="file" id="importFileInput" accept=".xlsx,.xls" style="display:none;" />
+      <div class="legend-hint" data-i18n="admin.data.importHint">支持导出格式表头（日期/会议室/开始时间/结束时间/会议主题/主持人/联系电话备注），会议室按名称匹配，已存在的时间冲突会跳过并报告。</div>
     </div>
 
     <hr class="divider" />
@@ -75,6 +82,32 @@
         </div>
       </form>
       <div class="legend-hint" data-i18n="admin.banner.hint">发布后会悬浮显示在嘉宾预约页顶部，嘉宾端每 15 秒自动检查一次。</div>
+    </div>
+
+    <hr class="divider" />
+
+    <div class="sidebar-section">
+      <h2 data-i18n="admin.roomBanner.heading">会议室专属公告</h2>
+      <div class="field">
+        <select id="roomBannerRoomSelect"></select>
+      </div>
+      <form id="roomBannerForm" class="banner-form">
+        <textarea id="roomBannerText" maxlength="300" data-i18n-placeholder="admin.roomBanner.placeholder" placeholder="例如：本会议室临时改到 3 楼"></textarea>
+        <div class="row">
+          <button type="submit" class="btn btn-secondary btn-sm" data-i18n="admin.banner.publishBtn">发布公告</button>
+          <button type="button" id="roomBannerClearBtn" class="btn btn-secondary btn-sm" data-i18n="admin.banner.clearBtn">撤下公告</button>
+        </div>
+      </form>
+      <div class="legend-hint" data-i18n="admin.roomBanner.hint">只悬浮显示在该会议室的排期页面上，不影响其他会议室；与上面的全局公告可以同时显示。</div>
+    </div>
+
+    <hr class="divider" />
+
+    <div class="sidebar-section">
+      <h2 data-i18n="admin.backups.heading">备份</h2>
+      <button id="btnBackupNow" class="btn btn-secondary btn-block" data-i18n="admin.backups.now">立即备份当前排期</button>
+      <div id="backupList" class="backup-list"></div>
+      <div class="legend-hint" data-i18n="admin.backups.hint">每次执行"一键重置"前会自动生成一份快照，这里最多保留最近 30 份，随时可下载找回。</div>
     </div>
 
     <hr class="divider" />
@@ -180,6 +213,13 @@
     <div class="modal-header">
       <h3 data-i18n="admin.inviteModal.title">邀请嘉宾扫码预约</h3>
       <button class="modal-close" id="inviteModalClose">&times;</button>
+    </div>
+    <div class="field">
+      <label data-i18n="admin.inviteModal.roomLabel">生成链接的范围</label>
+      <select id="inviteRoomSelect">
+        <option value="" data-i18n="admin.inviteModal.roomAll">全部会议室（嘉宾可自行切换）</option>
+      </select>
+      <div class="legend-hint" data-i18n="admin.inviteModal.roomHint">选择某个会议室后，链接会锁定为只显示该会议室，嘉宾看不到其他会议室的排期——适合分开贴在每个会议室门口，保护各房间隐私。</div>
     </div>
     <div class="field">
       <label data-i18n="admin.inviteModal.addressLabel">选择本机在局域网中的地址</label>

@@ -106,6 +106,7 @@
       const err = new Error(ERR({ code: data && data.code, message: data && data.error }));
       err.status = res.status;
       err.code = data && data.code;
+      err.data = data;
       throw err;
     }
     return data;
@@ -119,6 +120,7 @@
     renderRoomList();
     renderRoomSelects();
     renderCalendars();
+    if (typeof renderRoomBannerSelect === 'function') renderRoomBannerSelect();
   }
 
   function renderRoomList() {
@@ -574,11 +576,30 @@
       await loadMeetings();
       showBufferWarning(result && result.warning);
     } catch (err) {
-      formError.textContent = err.message;
+      formError.innerHTML = escapeHtml(err.message) + renderConflictSuggestion(err);
       formError.classList.add('show');
       if (err.code === 'MEETING_STALE') await loadMeetings(true);
     }
   });
+
+  // Renders "距离最近的空闲时段是 X" / "其他空闲会议室：A、B" as extra lines
+  // under the plain error message, so a 409 conflict leaves the organizer
+  // with something actionable instead of just a dead end. Returns an empty
+  // string for any error that isn't a conflict, or a conflict with nothing
+  // useful to suggest (fully booked day, single-room setup, etc).
+  function renderConflictSuggestion(err) {
+    if (err.code !== 'MEETING_CONFLICT' || !err.data) return '';
+    const parts = [];
+    const slot = err.data.nextFreeSlot;
+    if (slot) {
+      const fmt = (iso) => iso.slice(5, 16).replace('T', ' ');
+      parts.push(`<div class="conflict-suggestion">${T('admin.meeting.suggestSlot', { start: fmt(slot.start_time), end: fmt(slot.end_time) })}</div>`);
+    }
+    if (err.data.freeRooms && err.data.freeRooms.length) {
+      parts.push(`<div class="conflict-suggestion">${T('admin.meeting.suggestRooms', { rooms: err.data.freeRooms.map(escapeHtml).join('、') })}</div>`);
+    }
+    return parts.join('');
+  }
 
   el('meetingDeleteBtn').addEventListener('click', async () => {
     const id = el('meetingId').value;
@@ -697,20 +718,44 @@
   });
 
   // ---------------------------------------------------------------------
-  // Emergency banner
+  // Emergency banner (global + per-room)
   // ---------------------------------------------------------------------
-  async function loadBanner() {
+  let lastAnnouncements = { global: '', rooms: {} };
+
+  async function loadAnnouncements() {
     try {
-      const data = await api('/admin/announcement');
-      el('bannerText').value = data.message || '';
+      lastAnnouncements = await api('/admin/announcements');
+      el('bannerText').value = lastAnnouncements.global || '';
+      renderRoomBannerSelect();
     } catch (err) { /* best-effort */ }
   }
+
+  function renderRoomBannerSelect() {
+    const select = el('roomBannerRoomSelect');
+    const prev = select.value;
+    select.innerHTML = '';
+    state.rooms.forEach((room) => {
+      const opt = document.createElement('option');
+      opt.value = room.id;
+      opt.textContent = room.name;
+      select.appendChild(opt);
+    });
+    if (prev && state.rooms.some((r) => String(r.id) === prev)) select.value = prev;
+    syncRoomBannerText();
+  }
+
+  function syncRoomBannerText() {
+    const roomId = el('roomBannerRoomSelect').value;
+    el('roomBannerText').value = (lastAnnouncements.rooms || {})[roomId] || '';
+  }
+  el('roomBannerRoomSelect').addEventListener('change', syncRoomBannerText);
 
   el('bannerForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const message = el('bannerText').value.trim();
     try {
-      await api('/admin/announcement', { method: 'PUT', body: JSON.stringify({ message }) });
+      await api('/admin/announcements/global', { method: 'PUT', body: JSON.stringify({ message }) });
+      lastAnnouncements.global = message;
       toast(T('admin.banner.published'));
     } catch (err) {
       toast(err.message, true);
@@ -720,8 +765,79 @@
   el('bannerClearBtn').addEventListener('click', async () => {
     el('bannerText').value = '';
     try {
-      await api('/admin/announcement', { method: 'PUT', body: JSON.stringify({ message: '' }) });
+      await api('/admin/announcements/global', { method: 'PUT', body: JSON.stringify({ message: '' }) });
+      lastAnnouncements.global = '';
       toast(T('admin.banner.cleared'));
+    } catch (err) {
+      toast(err.message, true);
+    }
+  });
+
+  el('roomBannerForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const roomId = el('roomBannerRoomSelect').value;
+    if (!roomId) return;
+    const message = el('roomBannerText').value.trim();
+    try {
+      await api(`/admin/announcements/room/${roomId}`, { method: 'PUT', body: JSON.stringify({ message }) });
+      lastAnnouncements.rooms = { ...lastAnnouncements.rooms, [roomId]: message };
+      toast(T('admin.banner.published'));
+    } catch (err) {
+      toast(err.message, true);
+    }
+  });
+
+  el('roomBannerClearBtn').addEventListener('click', async () => {
+    const roomId = el('roomBannerRoomSelect').value;
+    if (!roomId) return;
+    el('roomBannerText').value = '';
+    try {
+      await api(`/admin/announcements/room/${roomId}`, { method: 'PUT', body: JSON.stringify({ message: '' }) });
+      lastAnnouncements.rooms = { ...lastAnnouncements.rooms, [roomId]: '' };
+      toast(T('admin.banner.cleared'));
+    } catch (err) {
+      toast(err.message, true);
+    }
+  });
+
+  // ---------------------------------------------------------------------
+  // Backups (manual snapshot + the list of everything on disk, including
+  // the ones auto-generated right before a reset)
+  // ---------------------------------------------------------------------
+  async function loadBackups() {
+    try {
+      const backups = await api('/admin/backups');
+      renderBackupList(backups);
+    } catch (err) { /* best-effort */ }
+  }
+
+  function renderBackupList(backups) {
+    const wrap = el('backupList');
+    wrap.innerHTML = '';
+    if (!backups.length) {
+      wrap.innerHTML = `<div class="legend-hint">${T('admin.backups.empty')}</div>`;
+      return;
+    }
+    backups.forEach((b) => {
+      const row = document.createElement('a');
+      row.className = 'backup-row';
+      row.href = `/api/admin/backups/${encodeURIComponent(b.filename)}`;
+      row.download = b.filename;
+      const when = new Date(b.created_at);
+      const pad = (n) => String(n).padStart(2, '0');
+      row.innerHTML = `
+        <span class="backup-time">${when.getFullYear()}-${pad(when.getMonth() + 1)}-${pad(when.getDate())} ${pad(when.getHours())}:${pad(when.getMinutes())}</span>
+        <span class="backup-dl">${T('admin.backups.download')}</span>
+      `;
+      wrap.appendChild(row);
+    });
+  }
+
+  el('btnBackupNow').addEventListener('click', async () => {
+    try {
+      const result = await api('/admin/backups', { method: 'POST' });
+      toast(T('admin.backups.created', { count: result.meetingCount }));
+      await loadBackups();
     } catch (err) {
       toast(err.message, true);
     }
@@ -743,20 +859,128 @@
       const result = await api('/admin/reset', { method: 'POST', body: JSON.stringify({ confirm: 'RESET' }) });
       toast(T('admin.reset.done', { count: result.deleted }));
       await loadMeetings();
+      await loadBackups();
+      // The backup this just triggered is the safety net for what was
+      // about to be wiped — auto-download it immediately rather than
+      // making the operator remember to come back for it afterwards.
+      if (result.backupFile) {
+        const a = document.createElement('a');
+        a.href = `/api/admin/backups/${encodeURIComponent(result.backupFile)}`;
+        a.download = result.backupFile;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      } else {
+        toast(T('admin.reset.backupFailed'), true);
+      }
     } catch (err) {
       toast(err.message, true);
     }
   });
 
   // ---------------------------------------------------------------------
-  // Invite guest (QR code)
+  // Import from Excel — reuses the same header row the manual export
+  // writes, but tolerant of missing optional columns. Each row goes
+  // through the same server-side validation + conflict check as a normal
+  // create, so a bad row is reported rather than silently corrupting data.
+  // ---------------------------------------------------------------------
+  const COLUMN_ALIASES = {
+    room: ['会议室', 'Room'],
+    date: ['日期', 'Date'],
+    start: ['开始时间', 'Start'],
+    end: ['结束时间', 'End'],
+    topic: ['会议主题', 'Topic', 'Subject'],
+    host: ['主持人/主讲人', '主持人', 'Host'],
+    contact: ['联系电话/备注', '联系电话', 'Contact'],
+    link: ['参会名单链接', '名单链接', 'Link'],
+  };
+
+  function pickColumn(row, key) {
+    for (const alias of COLUMN_ALIASES[key]) {
+      if (row[alias] !== undefined) return row[alias];
+    }
+    return '';
+  }
+
+  // Accepts a date cell as either "2026-09-28" text or an Excel serial date
+  // number (SheetJS parses date-formatted cells as numbers by default
+  // unless cellDates is set) — normalizing both here means the import
+  // works regardless of how the source spreadsheet had its date column
+  // formatted.
+  function normalizeDateCell(value) {
+    if (typeof value === 'number') {
+      const parsed = XLSX.SSF.parse_date_code(value);
+      if (!parsed) return '';
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${parsed.y}-${pad(parsed.m)}-${pad(parsed.d)}`;
+    }
+    return String(value || '').trim();
+  }
+
+  function normalizeTimeCell(value) {
+    if (typeof value === 'number') {
+      const totalMinutes = Math.round(value * 24 * 60);
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${pad(Math.floor(totalMinutes / 60) % 24)}:${pad(totalMinutes % 60)}`;
+    }
+    return String(value || '').trim();
+  }
+
+  el('btnImport').addEventListener('click', () => el('importFileInput').click());
+
+  el('importFileInput').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    e.target.value = ''; // allow re-selecting the same file next time
+    if (!file || !window.XLSX) return;
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array' });
+      // Use the first non-empty sheet — an export made by this same app has
+      // "总览" first, which is exactly the one we want anyway.
+      const sheetName = wb.SheetNames.find((n) => XLSX.utils.sheet_to_json(wb.Sheets[n]).length > 0) || wb.SheetNames[0];
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName]);
+      if (!rows.length) { toast(T('admin.import.empty'), true); return; }
+
+      const meetings = rows.map((row) => {
+        const date = normalizeDateCell(pickColumn(row, 'date'));
+        const start = normalizeTimeCell(pickColumn(row, 'start'));
+        const end = normalizeTimeCell(pickColumn(row, 'end'));
+        return {
+          room_name: String(pickColumn(row, 'room') || '').trim(),
+          topic: String(pickColumn(row, 'topic') || '').trim(),
+          host: String(pickColumn(row, 'host') || '').trim(),
+          start_time: date && start ? `${date} ${start}` : '',
+          end_time: date && end ? `${date} ${end}` : '',
+          contact: String(pickColumn(row, 'contact') || '').trim(),
+          attendee_link: String(pickColumn(row, 'link') || '').trim(),
+        };
+      });
+
+      const result = await api('/meetings/bulk', { method: 'POST', body: JSON.stringify({ meetings }) });
+      await loadMeetings();
+      if (result.failed > 0) {
+        const firstError = result.results.find((r) => !r.ok);
+        toast(T('admin.import.partial', { imported: result.imported, failed: result.failed, reason: firstError.error }), true);
+      } else {
+        toast(T('admin.import.done', { imported: result.imported }));
+      }
+    } catch (err) {
+      toast(T('admin.import.parseFailed'), true);
+    }
+  });
+
+  // ---------------------------------------------------------------------
+  // Invite guest (QR code) — optionally scoped to a single room via
+  // ?room=<id>, which locks that link's guest page to only that room.
   // ---------------------------------------------------------------------
   const inviteOverlay = el('inviteModalOverlay');
   let qrInstance = null;
 
   function buildInviteUrl(address) {
     const port = state.serverPort || location.port || '3000';
-    return `http://${address}:${port}/guest`;
+    const base = `http://${address}:${port}/guest`;
+    const roomId = el('inviteRoomSelect').value;
+    return roomId ? `${base}?room=${roomId}` : base;
   }
 
   function renderInviteQr(address) {
@@ -778,8 +1002,22 @@
     });
   }
 
+  function renderInviteRoomSelect() {
+    const select = el('inviteRoomSelect');
+    const prev = select.value;
+    select.innerHTML = `<option value="" data-i18n="admin.inviteModal.roomAll">${T('admin.inviteModal.roomAll')}</option>`;
+    state.rooms.forEach((room) => {
+      const opt = document.createElement('option');
+      opt.value = room.id;
+      opt.textContent = room.name;
+      select.appendChild(opt);
+    });
+    if (prev) select.value = prev;
+  }
+
   async function openInviteModal() {
     inviteOverlay.classList.add('open');
+    renderInviteRoomSelect();
     const select = el('inviteAddressSelect');
     select.innerHTML = `<option>${T('common.loading')}</option>`;
     try {
@@ -804,6 +1042,7 @@
   el('inviteModalClose').addEventListener('click', () => inviteOverlay.classList.remove('open'));
   inviteOverlay.addEventListener('click', (e) => { if (e.target === inviteOverlay) inviteOverlay.classList.remove('open'); });
   el('inviteAddressSelect').addEventListener('change', (e) => renderInviteQr(e.target.value));
+  el('inviteRoomSelect').addEventListener('change', () => renderInviteQr(el('inviteAddressSelect').value));
   el('inviteCopyBtn').addEventListener('click', async () => {
     const text = el('inviteLinkText').value;
     try {
@@ -843,7 +1082,8 @@
     try {
       await loadRooms();
       await loadMeetings();
-      await loadBanner();
+      await loadAnnouncements();
+      await loadBackups();
     } catch (err) {
       toast(err.message, true);
     }

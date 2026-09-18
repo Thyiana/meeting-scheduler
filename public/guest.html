@@ -8,6 +8,7 @@
 <meta name="theme-color" content="#1c1b18" />
 <link rel="stylesheet" href="style.css" />
 <link rel="stylesheet" href="guest.css" />
+<script src="theme.js"></script>
 
 <!-- FullCalendar 6 (国内 BootCDN，v6 起样式已内置，无需单独引入 css) -->
 <script src="https://cdn.bootcdn.net/ajax/libs/fullcalendar/6.1.15/index.global.min.js"></script>
@@ -20,7 +21,10 @@
 <header class="guest-header">
   <div class="guest-header-row">
     <div class="guest-title" data-i18n="guest.title">会议室预约</div>
-    <button id="langToggleBtn" class="lang-toggle" data-i18n-lang-label>EN</button>
+    <div class="header-btns">
+      <button id="themeToggleBtn" class="lang-toggle" type="button" title="深色模式">🌙</button>
+      <button id="langToggleBtn" class="lang-toggle" data-i18n-lang-label>EN</button>
+    </div>
   </div>
   <div class="guest-range" id="guestRangeText">2026-09-28 — 2026-09-30</div>
   <div class="guest-tz" data-i18n="guest.tz">本会议室所有预约时间均以新加坡时间（SGT）为准</div>
@@ -29,6 +33,10 @@
 <div class="announcement-banner" id="announcementBanner">
   <span class="icon">📣</span>
   <span id="announcementText"></span>
+</div>
+<div class="announcement-banner room-banner" id="roomAnnouncementBanner">
+  <span class="icon">📌</span>
+  <span id="roomAnnouncementText"></span>
 </div>
 <div class="guest-offline-badge" id="offlineBadge" data-i18n="guest.offlineBadge">离线模式 · 显示的是最近一次缓存的排期</div>
 

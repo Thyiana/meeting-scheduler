@@ -74,6 +74,7 @@ router.delete('/:id', (req, res) => {
   const existing = db.prepare('SELECT id FROM rooms WHERE id = ?').get(id);
   if (!existing) return res.status(404).json({ error: '会议室不存在', code: 'ROOM_NOT_FOUND' });
   db.prepare('DELETE FROM rooms WHERE id = ?').run(id);
+  db.prepare("DELETE FROM settings WHERE key = ?").run(`announcement_room_${id}`);
   res.json({ ok: true });
 });
 

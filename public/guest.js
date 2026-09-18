@@ -29,7 +29,14 @@
     activeRoomId: null,
     activeDate: DAY_DATES[0],
     fullDay: false,
+    // If the invite link carried ?room=<id>, the guest is locked to that one
+    // room for privacy (they never see other rooms' schedules or even know
+    // they exist) — set once rooms have loaded and the id is confirmed valid.
+    lockedRoomId: null,
   };
+
+  // Read once at load: a plain query param, e.g. /guest?room=3
+  const urlRoomParam = new URLSearchParams(location.search).get('room');
 
   const el = (id) => document.getElementById(id);
   let calendar = null;
@@ -91,6 +98,7 @@
     if (!res.ok) {
       const err = new Error(ERR({ code: data && data.code, message: data && data.error }));
       err.code = data && data.code;
+      err.data = data;
       throw err;
     }
     return data;
@@ -101,7 +109,19 @@
   // ---------------------------------------------------------------------
   async function loadRooms() {
     state.rooms = await api('/rooms');
-    if (!state.activeRoomId && state.rooms.length) state.activeRoomId = state.rooms[0].id;
+    if (urlRoomParam && !state.lockedRoomId) {
+      const match = state.rooms.find((r) => String(r.id) === String(urlRoomParam));
+      if (match) state.lockedRoomId = match.id;
+      // An unrecognized/stale room id in the URL (room since deleted) just
+      // falls through to the normal "pick any room" experience below rather
+      // than showing an error — the link degrading gracefully matters more
+      // here than surfacing the mismatch.
+    }
+    if (state.lockedRoomId) {
+      state.activeRoomId = state.lockedRoomId;
+    } else if (!state.activeRoomId && state.rooms.length) {
+      state.activeRoomId = state.rooms[0].id;
+    }
     renderRoomTabs();
     renderRoomSelect();
     renderCurrentRoomBanner();
@@ -109,6 +129,10 @@
 
   function renderRoomTabs() {
     const wrap = el('guestRoomTabs');
+    // Locked-to-one-room links skip the switcher entirely — the whole point
+    // is the guest only ever sees the one room the link was generated for.
+    if (state.lockedRoomId) { wrap.innerHTML = ''; wrap.style.display = 'none'; return; }
+    wrap.style.display = '';
     wrap.innerHTML = '';
     state.rooms.forEach((room) => {
       const tab = document.createElement('button');
@@ -120,6 +144,7 @@
         renderRoomTabs();
         renderCurrentRoomBanner();
         renderCalendar();
+        pollAnnouncement();
       });
       wrap.appendChild(tab);
     });
@@ -157,12 +182,16 @@
     const select = el('guestRoom');
     const prev = select.value;
     select.innerHTML = '';
-    state.rooms.forEach((room) => {
+    const rooms = state.lockedRoomId
+      ? state.rooms.filter((r) => r.id === state.lockedRoomId)
+      : state.rooms;
+    rooms.forEach((room) => {
       const opt = document.createElement('option');
       opt.value = room.id;
       opt.textContent = room.name;
       select.appendChild(opt);
     });
+    select.disabled = !!state.lockedRoomId;
     if (prev) select.value = prev;
     else if (state.activeRoomId) select.value = state.activeRoomId;
   }
@@ -461,16 +490,29 @@
       await loadMeetings();
       showBufferWarning(result && result.warning);
     } catch (err) {
-      if (err.code === 'MEETING_STALE') {
-        bookError.textContent = err.message;
-        bookError.classList.add('show');
-        await loadMeetings(true);
-      } else {
-        bookError.textContent = err.message;
-        bookError.classList.add('show');
-      }
+      bookError.innerHTML = escapeHtml(err.message) + renderConflictSuggestion(err);
+      bookError.classList.add('show');
+      if (err.code === 'MEETING_STALE') await loadMeetings(true);
     }
   });
+
+  // Renders "距离最近的空闲时段是 X" / "其他空闲会议室：A、B" as extra lines
+  // under the plain error message on a 409 conflict — mirrors the admin
+  // side's version. Returns '' for anything that isn't a conflict, or a
+  // conflict with nothing useful to suggest.
+  function renderConflictSuggestion(err) {
+    if (err.code !== 'MEETING_CONFLICT' || !err.data) return '';
+    const parts = [];
+    const slot = err.data.nextFreeSlot;
+    if (slot) {
+      const fmt = (iso) => iso.slice(5, 16).replace('T', ' ');
+      parts.push(`<div class="conflict-suggestion">${T('guest.suggestSlot', { start: fmt(slot.start_time), end: fmt(slot.end_time) })}</div>`);
+    }
+    if (err.data.freeRooms && err.data.freeRooms.length) {
+      parts.push(`<div class="conflict-suggestion">${T('guest.suggestRooms', { rooms: err.data.freeRooms.map(escapeHtml).join('、') })}</div>`);
+    }
+    return parts.join('');
+  }
 
   // Enter-key navigation between form fields.
   function wireEnterNavigation(container) {
@@ -601,13 +643,22 @@
   // ---------------------------------------------------------------------
   async function pollAnnouncement() {
     try {
-      const data = await api('/admin/announcement');
+      const data = await api('/admin/announcements');
       const bar = el('announcementBanner');
-      if (data.message) {
-        el('announcementText').textContent = data.message;
+      if (data.global) {
+        el('announcementText').textContent = data.global;
         bar.classList.add('show');
       } else {
         bar.classList.remove('show');
+      }
+
+      const roomBar = el('roomAnnouncementBanner');
+      const roomMsg = state.activeRoomId ? (data.rooms || {})[state.activeRoomId] : '';
+      if (roomMsg) {
+        el('roomAnnouncementText').textContent = roomMsg;
+        roomBar.classList.add('show');
+      } else {
+        roomBar.classList.remove('show');
       }
     } catch (err) { /* silent - banner is best-effort */ }
   }

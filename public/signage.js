@@ -7,6 +7,16 @@
   const POLL_INTERVAL_MS = 10000;
   const BANNER_POLL_MS = 15000;
   const CLOCK_TICK_MS = 1000;
+  // Signage is meant to run unattended for days on end. FullCalendar
+  // instances get destroyed and rebuilt on every data refresh, and browsers
+  // left open that long can slowly accumulate memory regardless of how
+  // careful the app itself is — a periodic full page reload is the simplest
+  // reliable fix, and costs nothing since nobody is looking at it mid-reload
+  // at 4am. A small random jitter avoids every screen in a multi-room
+  // deployment reloading in the exact same instant if they were all opened
+  // together.
+  const RELOAD_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
+  const RELOAD_JITTER_MS = 5 * 60 * 1000; // +/- up to 5 min
   const T = window.I18N.t;
 
   const el = (id) => document.getElementById(id);
@@ -126,9 +136,11 @@
           <span class="room-swatch" style="background:${escapeHtml(room.color)}"></span>
           <span class="name">${escapeHtml(room.name)}</span>
         </div>
+        <div class="signage-room-banner" data-room-banner style="display:none;"></div>
         <div class="signage-col-body"></div>
       `;
       grid.appendChild(col);
+      applyRoomBanner(col, room.id);
 
       const body = col.querySelector('.signage-col-body');
       const events = state.meetings
@@ -187,16 +199,36 @@
     } catch (err) { /* signage is unattended — fail silently, retry on next poll */ }
   }
 
+  let lastAnnouncements = { global: '', rooms: {} };
+
+  function applyRoomBanner(col, roomId) {
+    const bar = col.querySelector('[data-room-banner]');
+    if (!bar) return;
+    const msg = (lastAnnouncements.rooms || {})[roomId];
+    if (msg) {
+      bar.textContent = '📌 ' + msg;
+      bar.style.display = '';
+    } else {
+      bar.style.display = 'none';
+    }
+  }
+
   async function pollAnnouncement() {
     try {
-      const data = await api('/admin/announcement');
+      lastAnnouncements = await api('/admin/announcements');
       const bar = el('announcementBanner');
-      if (data.message) {
-        el('announcementText').textContent = data.message;
+      if (lastAnnouncements.global) {
+        el('announcementText').textContent = lastAnnouncements.global;
         bar.classList.add('show');
       } else {
         bar.classList.remove('show');
       }
+      // Update every already-rendered column's banner in place, without a
+      // full renderGrid() (which would tear down and rebuild every
+      // FullCalendar instance just to change a text line).
+      document.querySelectorAll('.signage-col').forEach((col) => {
+        applyRoomBanner(col, Number(col.dataset.roomId));
+      });
     } catch (err) { /* best-effort */ }
   }
 
@@ -214,6 +246,8 @@
     setInterval(() => loadAll(true), POLL_INTERVAL_MS);
     setInterval(pollAnnouncement, BANNER_POLL_MS);
     setInterval(renderNowBadges, 30000);
+    const jitter = (Math.random() * 2 - 1) * RELOAD_JITTER_MS;
+    setTimeout(() => location.reload(), RELOAD_INTERVAL_MS + jitter);
   }
 
   boot();

@@ -143,4 +143,5 @@ process.on('exit', () => {
 module.exports = db;
 module.exports.withTransaction = withTransaction;
 module.exports.ROOM_PALETTE = ROOM_PALETTE;
+module.exports.DATA_DIR = DATA_DIR;
 
