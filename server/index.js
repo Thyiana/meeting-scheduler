@@ -25,7 +25,7 @@ app.use('/api/admin', adminRouter);
 // displayed version doesn't match what you expect after a deploy, that's
 // immediate proof the deploy didn't actually land (or the browser/CDN is
 // still serving a cached copy), rather than having to guess.
-const BUILD_VERSION = '2026-09-18.1';
+const BUILD_VERSION = '2026-09-19.2-swfix';
 
 app.get('/api/health', (req, res) => res.json({ ok: true, time: new Date().toISOString(), version: BUILD_VERSION }));
 // Plain, unauthenticated liveness probe at a conventional path, so an
