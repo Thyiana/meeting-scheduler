@@ -659,6 +659,16 @@ input:focus, select:focus, textarea:focus {
   line-height: 1.5;
 }
 
+/* Tiny, deliberately unobtrusive build tag — its only job is letting you
+   confirm a deploy actually landed by eye, without opening devtools. */
+.build-version {
+  font-size: 10.5px;
+  color: var(--ink-faint);
+  opacity: 0.6;
+  padding: 6px 2px 0;
+  font-variant-numeric: tabular-nums;
+}
+
 .color-pick-row {
   display: flex;
   align-items: center;

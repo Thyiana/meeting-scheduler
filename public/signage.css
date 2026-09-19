@@ -104,3 +104,13 @@ html, body.signage-body {
   color: var(--ink-faint);
   font-size: 20px;
 }
+
+.build-version {
+  position: fixed;
+  bottom: 4px;
+  right: 8px;
+  font-size: 10px;
+  color: var(--ink-faint);
+  opacity: 0.35;
+  pointer-events: none;
+}

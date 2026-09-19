@@ -236,6 +236,9 @@
     window.I18N.applyStaticI18n(document);
     renderClock();
     renderDayTabs();
+    fetch('/api/health').then((r) => r.json()).then((d) => {
+      if (d.version) el('buildVersion').textContent = 'build ' + d.version;
+    }).catch(() => {});
     setInterval(renderClock, CLOCK_TICK_MS);
     // Re-render tabs once a minute — purely so the "TODAY" marker jumps to
     // the right tab automatically at midnight without a manual refresh,

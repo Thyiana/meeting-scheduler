@@ -19,7 +19,15 @@ app.use('/api/rooms', roomsRouter);
 app.use('/api/meetings', meetingsRouter);
 app.use('/api/admin', adminRouter);
 
-app.get('/api/health', (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
+// A short human-readable build tag, bumped whenever this file changes in a
+// release. Exposed at /api/health and shown as a tiny footer marker in the
+// admin/guest/signage UIs — the point is purely diagnostic: if the site's
+// displayed version doesn't match what you expect after a deploy, that's
+// immediate proof the deploy didn't actually land (or the browser/CDN is
+// still serving a cached copy), rather than having to guess.
+const BUILD_VERSION = '2026-09-18.1';
+
+app.get('/api/health', (req, res) => res.json({ ok: true, time: new Date().toISOString(), version: BUILD_VERSION }));
 // Plain, unauthenticated liveness probe at a conventional path, so an
 // external "keep this Render Starter instance warm" pinger (UptimeRobot,
 // cron-job.org, etc.) can hit it without knowing anything about /api.

@@ -682,6 +682,9 @@
     window.I18N.applyStaticI18n(document);
     el('guestRangeText').textContent = `${fullDateLabel(DAY_DATES[0])} — ${fullDateLabel(DAY_DATES[DAY_DATES.length - 1])}`;
     renderDayTabs();
+    fetch('/api/health').then((r) => r.json()).then((d) => {
+      if (d.version) el('buildVersion').textContent = 'build ' + d.version;
+    }).catch(() => {});
     if (!window.FullCalendar) {
       el('guestCalendar').innerHTML = `<div class="legend-hint" style="padding:30px 4px;">${T('guest.calendarLoadFailed')}</div>`;
       return;

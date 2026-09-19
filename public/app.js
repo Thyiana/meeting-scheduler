@@ -1071,6 +1071,9 @@
   async function boot() {
     window.I18N.applyStaticI18n(document);
     el('brandRange').textContent = `${fullDateLabel(RANGE_START)} — ${fullDateLabel('2026-09-30')}`;
+    fetch('/api/health').then((r) => r.json()).then((d) => {
+      if (d.version) el('buildVersion').textContent = 'build ' + d.version;
+    }).catch(() => {});
     if (!window.FullCalendar) {
       el('statusHint').textContent = window.I18N.getLang() === 'zh'
         ? 'FullCalendar 加载失败，请检查网络或 CDN 是否被拦截'
