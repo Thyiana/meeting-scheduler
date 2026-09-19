@@ -110,7 +110,7 @@
   async function loadRooms() {
     state.rooms = await api('/rooms');
     if (urlRoomParam && !state.lockedRoomId) {
-      const match = state.rooms.find((r) => String(r.id) === String(urlRoomParam));
+      const match = state.rooms.find((r) => String(r.id) === String(urlRoomParam) || String(r.name) === String(urlRoomParam));
       if (match) state.lockedRoomId = match.id;
       // An unrecognized/stale room id in the URL (room since deleted) just
       // falls through to the normal "pick any room" experience below rather
