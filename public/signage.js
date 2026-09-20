@@ -28,14 +28,18 @@
   // switch days via the tab bar below (state.selectedDate), which always
   // wins once they've touched it.
   function defaultDate() {
-    const todayStr = new Date().toISOString().slice(0, 10);
-    return DAY_DATES.includes(todayStr) ? todayStr : DAY_DATES[0];
+    const today = todayStr();
+    return DAY_DATES.includes(today) ? today : DAY_DATES[0];
   }
 
   const state = { rooms: [], meetings: [], selectedDate: defaultDate() };
 
+  // Local calendar date (NOT toISOString(), which is UTC and would report
+  // "yesterday" for the first 8 hours of every day in SGT).
   function todayStr() {
-    return new Date().toISOString().slice(0, 10);
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   }
 
   function dayLabel(dateStr) {

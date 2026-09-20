@@ -25,7 +25,7 @@ app.use('/api/admin', adminRouter);
 // displayed version doesn't match what you expect after a deploy, that's
 // immediate proof the deploy didn't actually land (or the browser/CDN is
 // still serving a cached copy), rather than having to guess.
-const BUILD_VERSION = '2026-09-19.2-swfix';
+const BUILD_VERSION = '2026-09-20.1-datefix';
 
 app.get('/api/health', (req, res) => res.json({ ok: true, time: new Date().toISOString(), version: BUILD_VERSION }));
 // Plain, unauthenticated liveness probe at a conventional path, so an
@@ -46,10 +46,19 @@ app.get('/api/server-info', (req, res) => {
   res.json({ addresses, port: PORT });
 });
 
+// res.redirect() does NOT carry the query string over on its own, so
+// /guest?room=3 used to land on plain /guest.html and the per-room lock in
+// the invite link was silently dropped. Re-append it explicitly.
+function redirectKeepQuery(target) {
+  return (req, res) => {
+    const i = req.originalUrl.indexOf('?');
+    res.redirect(target + (i === -1 ? '' : req.originalUrl.slice(i)));
+  };
+}
 // Friendlier URL for the QR code / guest link than /guest.html
-app.get('/guest', (req, res) => res.redirect('/guest.html'));
+app.get('/guest', redirectKeepQuery('/guest.html'));
 // Full-screen, sidebar-free kanban meant for a door-mounted iPad/TV.
-app.get('/signage', (req, res) => res.redirect('/signage.html'));
+app.get('/signage', redirectKeepQuery('/signage.html'));
 
 // Centralized error handler so a thrown error in any route never leaves a
 // request hanging or crashes the process.

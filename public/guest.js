@@ -110,7 +110,11 @@
   async function loadRooms() {
     state.rooms = await api('/rooms');
     if (urlRoomParam && !state.lockedRoomId) {
-      const match = state.rooms.find((r) => String(r.id) === String(urlRoomParam) || String(r.name) === String(urlRoomParam));
+      // Prefer an exact id match; only fall back to matching by name if no
+      // id matches (so a room *named* "2" can never hijack the link for the
+      // room whose id is 2).
+      const match = state.rooms.find((r) => String(r.id) === String(urlRoomParam))
+        || state.rooms.find((r) => String(r.name) === String(urlRoomParam));
       if (match) state.lockedRoomId = match.id;
       // An unrecognized/stale room id in the URL (room since deleted) just
       // falls through to the normal "pick any room" experience below rather
@@ -538,20 +542,29 @@
 
   function buildIcs(m) {
     const room = state.rooms.find((r) => r.id === m.room_id);
-    const fmt = (iso) => iso.replace(/[-:]/g, '').slice(0, 15) + '00'; // local (SGT) floating time
+    // Meeting times are stored as SGT wall-clock strings ("YYYY-MM-DDTHH:MM:SS").
+    // iCalendar wants exactly "YYYYMMDDTHHMMSS" (15 chars) for a local time.
+    const fmt = (iso) => iso.replace(/[-:]/g, '').slice(0, 15);
+    // DTSTAMP must be UTC ("...Z"): "2026-09-20T02:41:23.123Z" -> "20260920T024123Z"
+    const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
     const esc = (s) => String(s || '').replace(/[\\,;]/g, (c) => '\\' + c).replace(/\n/g, '\\n');
     return [
       'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Meeting Scheduler//CN',
+      // Singapore has no DST, so a fixed-offset VTIMEZONE is exact. Some
+      // clients (notably Outlook) ignore a bare TZID without this block.
+      'BEGIN:VTIMEZONE', 'TZID:Asia/Singapore',
+      'BEGIN:STANDARD', 'DTSTART:19700101T000000', 'TZOFFSETFROM:+0800', 'TZOFFSETTO:+0800', 'TZNAME:SGT', 'END:STANDARD',
+      'END:VTIMEZONE',
       'BEGIN:VEVENT',
       `UID:meeting-${m.id}@meeting-scheduler`,
-      `DTSTAMP:${fmt(new Date().toISOString())}`,
+      `DTSTAMP:${stamp}`,
       `DTSTART;TZID=Asia/Singapore:${fmt(m.start_time)}`,
       `DTEND;TZID=Asia/Singapore:${fmt(m.end_time)}`,
       `SUMMARY:${esc(m.topic)}`,
       `LOCATION:${esc(room ? room.name : '')}`,
       `DESCRIPTION:${esc(`主持人/Host: ${m.host}${m.contact ? ' | ' + m.contact : ''}`)}`,
       'END:VEVENT', 'END:VCALENDAR',
-    ].join('\r\n');
+    ].join('\r\n') + '\r\n';
   }
 
   function downloadIcs(m) {
@@ -568,15 +581,16 @@
 
   function googleCalendarUrl(m) {
     const room = state.rooms.find((r) => r.id === m.room_id);
-    const fmt = (iso) => iso.replace(/[-:]/g, '').slice(0, 15) + '00Z';
-    // Meeting times are floating SGT wall-clock times; Google Calendar's
-    // "dates" param wants UTC, so shift by -8h to render the same local
-    // clock time in most viewers' default calendar timezone assumption.
-    const toUtcIso = (iso) => new Date(new Date(iso).getTime() - 8 * 3600 * 1000).toISOString();
+    // Send the SGT wall-clock time as-is ("YYYYMMDDTHHMMSS", no trailing Z)
+    // and let `ctz` tell Google which timezone it's in. This is correct
+    // regardless of the guest's own device timezone — the previous version
+    // built a UTC time via `new Date(...)`, which silently used the *browser's*
+    // timezone and so was only right for browsers set to UTC.
+    const fmt = (iso) => iso.replace(/[-:]/g, '').slice(0, 15);
     const params = new URLSearchParams({
       action: 'TEMPLATE',
       text: m.topic,
-      dates: `${fmt(toUtcIso(m.start_time))}/${fmt(toUtcIso(m.end_time))}`,
+      dates: `${fmt(m.start_time)}/${fmt(m.end_time)}`,
       details: `主持人/Host: ${m.host}${m.contact ? ' | ' + m.contact : ''}`,
       location: room ? room.name : '',
       ctz: 'Asia/Singapore',

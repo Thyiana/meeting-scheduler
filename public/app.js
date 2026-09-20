@@ -59,6 +59,16 @@
     return (isoLike || '').slice(0, 16);
   }
 
+  // Formats a Date as YYYY-MM-DD using the *local* calendar date. Do NOT use
+  // date.toISOString().slice(0, 10) for this: toISOString() converts to UTC
+  // first, so local midnight in any UTC+ zone (e.g. SGT, UTC+8) lands on the
+  // previous day — which is what made the admin headers show 27–29 instead
+  // of 28–30.
+  function toLocalDateStr(date) {
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  }
+
   function fullDateLabel(dateStr) {
     const d = new Date(dateStr + 'T00:00:00');
     return window.I18N.getLang() === 'zh'
@@ -374,7 +384,7 @@
         validRange: { start: RANGE_START, end: RANGE_END_EXCLUSIVE },
         views: { fourDay: { type: 'timeGrid', duration: { days: 3 } } },
         headerToolbar: { left: '', center: '', right: '' },
-        dayHeaderContent: (arg) => fullDateLabel(arg.date.toISOString().slice(0, 10)) + ' ' + T(`weekday.${arg.date.getDay()}`),
+        dayHeaderContent: (arg) => fullDateLabel(toLocalDateStr(arg.date)) + ' ' + T(`weekday.${arg.date.getDay()}`),
         slotMinTime: state.fullDay ? '00:00:00' : '08:00:00',
         slotMaxTime: state.fullDay ? '24:00:00' : '20:00:00',
         slotDuration: '00:30:00',
@@ -448,7 +458,7 @@
   // doesn't have to hunt through a long day.
   el('jumpNowBtn').addEventListener('click', () => {
     const now = new Date();
-    const inRange = now >= new Date(RANGE_START) && now < new Date(RANGE_END_EXCLUSIVE);
+    const inRange = now >= new Date(RANGE_START + 'T00:00:00') && now < new Date(RANGE_END_EXCLUSIVE + 'T00:00:00');
     let target = inRange ? now : null;
     if (!target) {
       const firstMeeting = state.meetings.slice().sort((a, b) => a.start_time.localeCompare(b.start_time))[0];

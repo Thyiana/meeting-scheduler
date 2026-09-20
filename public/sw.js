@@ -5,7 +5,7 @@
 // revalidate) means the cache name no longer NEEDS to be bumped on every
 // deploy for updates to reach people — but bumping it is still a fine way
 // to force an immediate full refresh if ever needed again.
-const CACHE_NAME = 'meeting-scheduler-v3';
+const CACHE_NAME = 'meeting-scheduler-v4';
 const ASSETS_TO_CACHE = [
   '/guest.html',
   '/index.html',
@@ -84,9 +84,12 @@ self.addEventListener('fetch', (event) => {
     caches.open(CACHE_NAME).then(async (cache) => {
       const cached = await cache.match(req);
       const networkFetch = fetch(req).then((res) => {
-        cache.put(req, res.clone());
+        // Only cache good responses. Without this check, a transient 502/503
+        // (e.g. Render restarting) would overwrite the cached app.js with an
+        // error page, and the next visit would serve that broken copy.
+        if (res.ok) cache.put(req, res.clone());
         return res;
-      }).catch(() => cached); // offline and nothing cached yet: genuinely fails
+      }).catch(() => cached || Response.error()); // offline and nothing cached yet: genuinely fails
       return cached || networkFetch;
     })
   );
