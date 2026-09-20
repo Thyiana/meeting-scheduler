@@ -5,7 +5,7 @@
 // revalidate) means the cache name no longer NEEDS to be bumped on every
 // deploy for updates to reach people — but bumping it is still a fine way
 // to force an immediate full refresh if ever needed again.
-const CACHE_NAME = 'meeting-scheduler-v4';
+const CACHE_NAME = 'meeting-scheduler-v5';
 const ASSETS_TO_CACHE = [
   '/guest.html',
   '/index.html',

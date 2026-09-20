@@ -4,7 +4,10 @@
 window.I18N = (function () {
   'use strict';
 
-  const STORAGE_KEY = 'ms_lang';
+  // Bumped from 'ms_lang' when the default flipped to English, so browsers that
+  // had auto-saved the old Chinese default also open in English once; after
+  // that, whatever the person picks with the toggle is remembered as before.
+  const STORAGE_KEY = 'ms_lang_v2';
 
   const dict = {
     zh: {
@@ -191,6 +194,21 @@ window.I18N = (function () {
 
       // ---- generic errors (fallback if backend didn't send a known code) ----
       'errors.generic': '请求失败，请稍后再试',
+      'guest.tz': '本会议室所有预约时间均以新加坡时间（SGT）为准',
+      'guest.currentRoom': '当前选择：',
+      'guest.date': '预约日期',
+      'guest.startTime': '开始时刻',
+      'guest.endTime': '结束时刻',
+      'guest.contact': '联系电话 / 备注',
+      'guest.contactPlaceholder': '例如：138xxxxxxxx（选填）',
+      'guest.exportIcs': '导出到日历 (.ics)',
+      'guest.exportGoogle': '添加到 Google Calendar',
+      'guest.offlineBadge': '离线模式 · 显示的是最近一次缓存的排期',
+      'guest.offlineSaveFailed': '当前网络不可用，预约暂无法提交，请稍后重试',
+      'errors.BULK_PAYLOAD_INVALID': '请提供 meetings 数组',
+      'errors.BACKUP_NOT_FOUND': '备份文件不存在',
+      'errors.BACKUP_FAILED': '备份失败',
+      'common.darkMode': '深色模式',
       'errors.ROOM_NAME_REQUIRED': '会议室名称不能为空',
       'errors.ROOM_DUPLICATE': '已存在同名会议室',
       'errors.ROOM_NOT_FOUND': '会议室不存在',
@@ -375,6 +393,21 @@ window.I18N = (function () {
       'guest.noRooms': 'No rooms yet — please contact an admin',
 
       'errors.generic': 'Something went wrong, please try again',
+      'guest.tz': 'All booking times are in Singapore Time (SGT)',
+      'guest.currentRoom': 'Selected: ',
+      'guest.date': 'Date',
+      'guest.startTime': 'Start time',
+      'guest.endTime': 'End time',
+      'guest.contact': 'Contact phone / notes',
+      'guest.contactPlaceholder': 'e.g. +65 xxxx xxxx (optional)',
+      'guest.exportIcs': 'Export to calendar (.ics)',
+      'guest.exportGoogle': 'Add to Google Calendar',
+      'guest.offlineBadge': 'Offline mode · showing the last cached schedule',
+      'guest.offlineSaveFailed': 'Network unavailable — your booking could not be submitted. Please try again shortly',
+      'errors.BULK_PAYLOAD_INVALID': 'Please provide a meetings array',
+      'errors.BACKUP_NOT_FOUND': 'Backup file not found',
+      'errors.BACKUP_FAILED': 'Backup failed',
+      'common.darkMode': 'Dark mode',
       'errors.ROOM_NAME_REQUIRED': 'Room name is required',
       'errors.ROOM_DUPLICATE': 'A room with this name already exists',
       'errors.ROOM_NOT_FOUND': 'Room not found',
@@ -404,9 +437,9 @@ window.I18N = (function () {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved === 'zh' || saved === 'en') return saved;
     } catch (e) { /* localStorage unavailable, fall through */ }
-    return (navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'zh';
-    // Default to zh regardless of browser locale — this app's primary
-    // audience is Chinese-speaking; English is opt-in via the toggle.
+    // Default to English regardless of browser locale; Chinese is one tap
+    // away via the toggle, and the choice is remembered once made.
+    return 'en';
   })();
 
   function t(key, vars) {
