@@ -11,16 +11,12 @@
 
 <!-- FullCalendar 6 (国内 BootCDN，v6 起样式已内置，无需单独引入 css) -->
 <script src="https://cdn.bootcdn.net/ajax/libs/fullcalendar/6.1.15/index.global.min.js"></script>
-<!-- 备用 CDN，如上方 BootCDN 被拦截可切换为下方 jsDelivr/cdnjs -->
-<!-- <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script> -->
 
 <!-- SheetJS，用于导出 xlsx -->
 <script src="https://cdn.bootcdn.net/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<!-- <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script> -->
 
 <!-- qrcodejs，用于生成嘉宾邀请二维码 -->
 <script src="https://cdn.bootcdn.net/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<!-- <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script> -->
 
 <script src="i18n.js"></script>
 </head>
@@ -80,16 +76,6 @@
           <button type="submit" class="btn btn-secondary btn-sm" data-i18n="admin.banner.publishBtn">发布公告</button>
           <button type="button" id="bannerClearBtn" class="btn btn-secondary btn-sm" data-i18n="admin.banner.clearBtn">撤下公告</button>
         </div>
-      <div class="field" style="margin-top: 8px;">
-        <label style="cursor: pointer; font-size: 13px; display: block; margin-bottom: 4px;">
-          📷 附带图片（可选）：
-          <input type="file" id="announcementImgInput" accept="image/*" style="margin-top: 4px; font-size: 12px;">
-        </label>
-        <div id="announcementImgPreviewBox" style="display: none; align-items: center; gap: 8px; margin-top: 6px;">
-          <img id="announcementImgPreview" style="max-width: 120px; max-height: 80px; border-radius: 4px; border: 1px solid var(--border);" src="" alt="图片预览">
-          <button type="button" class="btn btn-secondary btn-sm" id="clearAnnouncementImgBtn">清除图片</button>
-        </div>
-      </div>
       </form>
       <div class="legend-hint" data-i18n="admin.banner.hint">发布后会悬浮显示在嘉宾预约页顶部，嘉宾端每 15 秒自动检查一次。</div>
     </div>
@@ -103,7 +89,20 @@
       </div>
       <form id="roomBannerForm" class="banner-form">
         <textarea id="roomBannerText" maxlength="300" data-i18n-placeholder="admin.roomBanner.placeholder" placeholder="例如：本会议室临时改到 3 楼"></textarea>
-        <div class="row">
+        
+        <!-- 会议室专属公告 - 图片上传项 -->
+        <div class="field" style="margin-top: 8px;">
+          <label style="cursor: pointer; font-size: 13px; display: block; margin-bottom: 4px;">
+            📷 附带图片（可选）：
+            <input type="file" id="roomBannerImgInput" accept="image/*" style="margin-top: 4px; font-size: 12px;">
+          </label>
+          <div id="roomBannerImgPreviewBox" style="display: none; align-items: center; gap: 8px; margin-top: 6px;">
+            <img id="roomBannerImgPreview" style="max-width: 120px; max-height: 80px; border-radius: 4px; border: 1px solid var(--border);" src="" alt="图片预览">
+            <button type="button" class="btn btn-secondary btn-sm" id="clearRoomBannerImgBtn">清除图片</button>
+          </div>
+        </div>
+
+        <div class="row" style="margin-top: 8px;">
           <button type="submit" class="btn btn-secondary btn-sm" data-i18n="admin.banner.publishBtn">发布公告</button>
           <button type="button" id="roomBannerClearBtn" class="btn btn-secondary btn-sm" data-i18n="admin.banner.clearBtn">撤下公告</button>
         </div>

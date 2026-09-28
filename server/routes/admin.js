@@ -26,7 +26,7 @@ router.get('/announcements', (req, res) => {
 // string) the system-wide banner, shown on every room regardless of any
 // per-room banner.
 router.put('/announcements/global', (req, res) => {
-  const message = (req.body.message || '').toString().trim().slice(0, 300);
+  const message = (req.body.message || '').toString().trim();
   db.prepare(`
     INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')
@@ -41,7 +41,7 @@ router.put('/announcements/room/:roomId', (req, res) => {
   const roomId = Number(req.params.roomId);
   const room = db.prepare('SELECT id FROM rooms WHERE id = ?').get(roomId);
   if (!room) return res.status(404).json({ error: '会议室不存在', code: 'ROOM_NOT_FOUND' });
-  const message = (req.body.message || '').toString().trim().slice(0, 300);
+  const message = (req.body.message || '').toString().trim();
   db.prepare(`
     INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')

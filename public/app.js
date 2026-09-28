@@ -59,11 +59,6 @@
     return (isoLike || '').slice(0, 16);
   }
 
-  // Formats a Date as YYYY-MM-DD using the *local* calendar date. Do NOT use
-  // date.toISOString().slice(0, 10) for this: toISOString() converts to UTC
-  // first, so local midnight in any UTC+ zone (e.g. SGT, UTC+8) lands on the
-  // previous day — which is what made the admin headers show 27–29 instead
-  // of 28–30.
   function toLocalDateStr(date) {
     const pad = (n) => String(n).padStart(2, '0');
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
@@ -153,7 +148,7 @@
       colorInput.className = 'room-color-input';
       colorInput.value = roomColor(room.id);
       colorInput.addEventListener('input', () => {
-        swatch.style.background = colorInput.value; // live preview while dragging
+        swatch.style.background = colorInput.value;
       });
       colorInput.addEventListener('change', async () => {
         const newColor = colorInput.value;
@@ -163,7 +158,7 @@
           renderCalendars();
         } catch (err) {
           toast(err.message, true);
-          swatch.style.background = roomColor(room.id); // revert preview on failure
+          swatch.style.background = roomColor(room.id);
         }
       });
 
@@ -289,8 +284,6 @@
       }));
   }
 
-  // Meetings whose next same-room neighbour starts too soon after them to
-  // fit the full card content — these render in the compact one-line form.
   function computeCompactIds(roomId) {
     const list = state.meetings
       .filter((m) => m.room_id === roomId)
@@ -304,8 +297,6 @@
     return compact;
   }
 
-  // Repositions the "now" time-label badge next to FullCalendar's built-in
-  // red line, for every visible room column.
   function renderNowBadges() {
     roomCalendars.forEach((cal, roomId) => {
       const container = calendarsContainer.querySelector(`[data-room-id="${roomId}"] .room-col-body`);
@@ -325,11 +316,6 @@
     });
   }
 
-  // Rebuild the room columns. Called whenever the room list, meeting data,
-  // language, search query, 24H toggle, or the visible-rooms filter changes.
-  // Instances are destroyed and recreated each time — dataset is small so
-  // this stays instant, and it keeps the per-room filtering logic in one
-  // place.
   function renderCalendars() {
     roomCalendars.forEach((cal) => cal.destroy());
     roomCalendars.clear();
@@ -453,9 +439,6 @@
     }, 200);
   });
 
-  // Scrolls every visible room column to "now" (or, if nothing is
-  // scheduled around now, the first meeting of the range) so the operator
-  // doesn't have to hunt through a long day.
   el('jumpNowBtn').addEventListener('click', () => {
     const now = new Date();
     const inRange = now >= new Date(RANGE_START + 'T00:00:00') && now < new Date(RANGE_END_EXCLUSIVE + 'T00:00:00');
@@ -526,8 +509,6 @@
     setTimeout(() => el('meetingRoom').focus(), 30);
   }
 
-  // While no custom color has been chosen, keep the preview following
-  // whichever room is currently selected in the dropdown.
   el('meetingRoom').addEventListener('change', () => {
     if (!state.colorTouched) syncCardColorUI(roomColor(Number(el('meetingRoom').value)), false);
   });
@@ -592,11 +573,6 @@
     }
   });
 
-  // Renders "距离最近的空闲时段是 X" / "其他空闲会议室：A、B" as extra lines
-  // under the plain error message, so a 409 conflict leaves the organizer
-  // with something actionable instead of just a dead end. Returns an empty
-  // string for any error that isn't a conflict, or a conflict with nothing
-  // useful to suggest (fully booked day, single-room setup, etc).
   function renderConflictSuggestion(err) {
     if (err.code !== 'MEETING_CONFLICT' || !err.data) return '';
     const parts = [];
@@ -627,13 +603,12 @@
 
   el('btnAddMeeting').addEventListener('click', () => openMeetingModal(null));
 
-  // Enter-key navigation between form fields.
   function wireEnterNavigation(container) {
     const fields = Array.from(container.querySelectorAll('input, select, textarea'));
     fields.forEach((field, idx) => {
       field.addEventListener('keydown', (e) => {
         if (e.key !== 'Enter') return;
-        if (field.tagName === 'TEXTAREA') return; // allow newline
+        if (field.tagName === 'TEXTAREA') return;
         e.preventDefault();
         const next = fields[idx + 1];
         if (next) next.focus();
@@ -656,15 +631,11 @@
     };
   }
 
-  // Excel sheet names can't contain \ / ? * [ ] : and are capped at 31 chars.
   function sanitizeSheetName(name, fallback) {
     const cleaned = String(name || fallback).replace(/[\\/?*\[\]:]/g, '').slice(0, 31);
     return cleaned || fallback;
   }
 
-  // Column order matches the requested export spec: 日期 | 会议室 | 开始时间 |
-  // 结束时间 | 会议主题 | 主持人/主讲人 | 联系电话/备注 (attendee link kept as an
-  // extra trailing column since it's still useful and nothing asked to drop it).
   function meetingRow(m, idx, includeRoom) {
     const start = splitDateTime(m.start_time);
     const end = splitDateTime(m.end_time);
@@ -684,7 +655,6 @@
     ws['!cols'] = includeRoom
       ? [{ wch: 6 }, { wch: 12 }, { wch: 7 }, { wch: 14 }, { wch: 10 }, { wch: 10 }, { wch: 26 }, { wch: 14 }, { wch: 18 }, { wch: 32 }]
       : [{ wch: 6 }, { wch: 12 }, { wch: 7 }, { wch: 10 }, { wch: 10 }, { wch: 26 }, { wch: 14 }, { wch: 18 }, { wch: 32 }];
-    // Freeze the header row so it stays visible while scrolling long sheets.
     ws['!freeze'] = { xSplit: 0, ySplit: 1 };
     return ws;
   }
@@ -696,23 +666,19 @@
     const wb = XLSX.utils.book_new();
     const overviewName = T('admin.export.sheetOverview');
 
-    // Sheet 1: chronological overview across every room — a single index
-    // to scan the whole window at a glance.
     const overviewRows = state.meetings
       .slice()
       .sort((a, b) => a.start_time.localeCompare(b.start_time))
       .map((m, idx) => meetingRow(m, idx, true));
     XLSX.utils.book_append_sheet(wb, buildSheet(overviewRows, true), overviewName);
 
-    // One sheet per room, each sorted chronologically within that room —
-    // easier to hand a single room's schedule to whoever manages it.
     const usedSheetNames = new Set([overviewName]);
     state.rooms.forEach((room) => {
       const roomMeetings = state.meetings
         .filter((m) => m.room_id === room.id)
         .slice()
         .sort((a, b) => a.start_time.localeCompare(b.start_time));
-      if (!roomMeetings.length) return; // skip empty rooms, nothing to show
+      if (!roomMeetings.length) return;
       const rows = roomMeetings.map((m, idx) => meetingRow(m, idx, false));
       let sheetName = sanitizeSheetName(room.name, `Room${room.id}`);
       while (usedSheetNames.has(sheetName)) sheetName = `${sheetName}_`;
@@ -731,47 +697,42 @@
   // Emergency banner (global + per-room)
   // ---------------------------------------------------------------------
   let lastAnnouncements = { global: '', rooms: {} };
-  let pendingAnnouncementImg = ''; // 保存选中的图片 Base64
+  let pendingRoomBannerImg = ''; // 保存选中的专属公告图片 Base64
 
-  // 选图与预览逻辑绑定
-  const announcementImgInput = el('announcementImgInput');
-  const announcementImgPreviewBox = el('announcementImgPreviewBox');
-  const announcementImgPreview = el('announcementImgPreview');
-  const clearAnnouncementImgBtn = el('clearAnnouncementImgBtn');
+  // 会议室专属公告 - 选图与预览逻辑绑定
+  const roomBannerImgInput = el('roomBannerImgInput');
+  const roomBannerImgPreviewBox = el('roomBannerImgPreviewBox');
+  const roomBannerImgPreview = el('roomBannerImgPreview');
+  const clearRoomBannerImgBtn = el('clearRoomBannerImgBtn');
 
-  if (announcementImgInput) {
-    announcementImgInput.addEventListener('change', (e) => {
+  if (roomBannerImgInput) {
+    roomBannerImgInput.addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (file) {
         const reader = new FileReader();
         reader.onload = (evt) => {
-          pendingAnnouncementImg = evt.target.result;
-          if (announcementImgPreview) announcementImgPreview.src = pendingAnnouncementImg;
-          if (announcementImgPreviewBox) announcementImgPreviewBox.style.display = 'flex';
+          pendingRoomBannerImg = evt.target.result;
+          if (roomBannerImgPreview) roomBannerImgPreview.src = pendingRoomBannerImg;
+          if (roomBannerImgPreviewBox) roomBannerImgPreviewBox.style.display = 'flex';
         };
         reader.readAsDataURL(file);
       }
     });
   }
 
-  if (clearAnnouncementImgBtn) {
-    clearAnnouncementImgBtn.addEventListener('click', () => {
-      if (announcementImgInput) announcementImgInput.value = '';
-      pendingAnnouncementImg = '';
-      if (announcementImgPreview) announcementImgPreview.src = '';
-      if (announcementImgPreviewBox) announcementImgPreviewBox.style.display = 'none';
+  if (clearRoomBannerImgBtn) {
+    clearRoomBannerImgBtn.addEventListener('click', () => {
+      if (roomBannerImgInput) roomBannerImgInput.value = '';
+      pendingRoomBannerImg = '';
+      if (roomBannerImgPreview) roomBannerImgPreview.src = '';
+      if (roomBannerImgPreviewBox) roomBannerImgPreviewBox.style.display = 'none';
     });
   }
 
   async function loadAnnouncements() {
     try {
       lastAnnouncements = await api('/admin/announcements');
-      let rawText = lastAnnouncements.global || '';
-      try {
-        const parsed = JSON.parse(rawText);
-        if (parsed && typeof parsed === 'object') rawText = parsed.text || '';
-      } catch (e) { /* 普通字符串解包失败不处理 */ }
-      el('bannerText').value = rawText;
+      el('bannerText').value = lastAnnouncements.global || '';
       renderRoomBannerSelect();
     } catch (err) { /* best-effort */ }
   }
@@ -792,27 +753,22 @@
 
   function syncRoomBannerText() {
     const roomId = el('roomBannerRoomSelect').value;
-    el('roomBannerText').value = (lastAnnouncements.rooms || {})[roomId] || '';
+    let rawText = (lastAnnouncements.rooms || {})[roomId] || '';
+    try {
+      const parsed = JSON.parse(rawText);
+      if (parsed && typeof parsed === 'object') rawText = parsed.text || '';
+    } catch (e) {}
+    el('roomBannerText').value = rawText;
   }
   el('roomBannerRoomSelect').addEventListener('change', syncRoomBannerText);
 
+  // 全局紧急公告（保持纯文本）
   el('bannerForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const text = el('bannerText').value.trim();
-    
-    // 如果选择并附带了图片，打包发送 JSON 字符串；否则发送纯文本
-    let message = text;
-    if (pendingAnnouncementImg) {
-      message = JSON.stringify({
-        text: text,
-        image: pendingAnnouncementImg
-      });
-    }
-
+    const message = el('bannerText').value.trim();
     try {
       await api('/admin/announcements/global', { method: 'PUT', body: JSON.stringify({ message }) });
       lastAnnouncements.global = message;
-      if (clearAnnouncementImgBtn) clearAnnouncementImgBtn.click();
       toast(T('admin.banner.published'));
     } catch (err) {
       toast(err.message, true);
@@ -821,7 +777,6 @@
 
   el('bannerClearBtn').addEventListener('click', async () => {
     el('bannerText').value = '';
-    if (clearAnnouncementImgBtn) clearAnnouncementImgBtn.click();
     try {
       await api('/admin/announcements/global', { method: 'PUT', body: JSON.stringify({ message: '' }) });
       lastAnnouncements.global = '';
@@ -831,14 +786,25 @@
     }
   });
 
+  // 会议室专属公告（支持图片上传）
   el('roomBannerForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const roomId = el('roomBannerRoomSelect').value;
     if (!roomId) return;
-    const message = el('roomBannerText').value.trim();
+    const text = el('roomBannerText').value.trim();
+
+    let message = text;
+    if (pendingRoomBannerImg) {
+      message = JSON.stringify({
+        text: text,
+        image: pendingRoomBannerImg
+      });
+    }
+
     try {
       await api(`/admin/announcements/room/${roomId}`, { method: 'PUT', body: JSON.stringify({ message }) });
       lastAnnouncements.rooms = { ...lastAnnouncements.rooms, [roomId]: message };
+      if (clearRoomBannerImgBtn) clearRoomBannerImgBtn.click();
       toast(T('admin.banner.published'));
     } catch (err) {
       toast(err.message, true);
@@ -849,6 +815,7 @@
     const roomId = el('roomBannerRoomSelect').value;
     if (!roomId) return;
     el('roomBannerText').value = '';
+    if (clearRoomBannerImgBtn) clearRoomBannerImgBtn.click();
     try {
       await api(`/admin/announcements/room/${roomId}`, { method: 'PUT', body: JSON.stringify({ message: '' }) });
       lastAnnouncements.rooms = { ...lastAnnouncements.rooms, [roomId]: '' };
@@ -859,8 +826,7 @@
   });
 
   // ---------------------------------------------------------------------
-  // Backups (manual snapshot + the list of everything on disk, including
-  // the ones auto-generated right before a reset)
+  // Backups
   // ---------------------------------------------------------------------
   async function loadBackups() {
     try {
@@ -902,9 +868,7 @@
   });
 
   // ---------------------------------------------------------------------
-  // One-click reset (danger zone) — double-confirmed: a plain confirm(),
-  // then a prompt() requiring the operator to type RESET, so a single
-  // careless tap can never wipe the board seconds before doors open.
+  // One-click reset
   // ---------------------------------------------------------------------
   el('btnReset').addEventListener('click', async () => {
     if (!confirm(T('admin.reset.confirm1'))) return;
@@ -918,9 +882,6 @@
       toast(T('admin.reset.done', { count: result.deleted }));
       await loadMeetings();
       await loadBackups();
-      // The backup this just triggered is the safety net for what was
-      // about to be wiped — auto-download it immediately rather than
-      // making the operator remember to come back for it afterwards.
       if (result.backupFile) {
         const a = document.createElement('a');
         a.href = `/api/admin/backups/${encodeURIComponent(result.backupFile)}`;
@@ -937,10 +898,7 @@
   });
 
   // ---------------------------------------------------------------------
-  // Import from Excel — reuses the same header row the manual export
-  // writes, but tolerant of missing optional columns. Each row goes
-  // through the same server-side validation + conflict check as a normal
-  // create, so a bad row is reported rather than silently corrupting data.
+  // Import from Excel
   // ---------------------------------------------------------------------
   const COLUMN_ALIASES = {
     room: ['会议室', 'Room'],
@@ -960,11 +918,6 @@
     return '';
   }
 
-  // Accepts a date cell as either "2026-09-28" text or an Excel serial date
-  // number (SheetJS parses date-formatted cells as numbers by default
-  // unless cellDates is set) — normalizing both here means the import
-  // works regardless of how the source spreadsheet had its date column
-  // formatted.
   function normalizeDateCell(value) {
     if (typeof value === 'number') {
       const parsed = XLSX.SSF.parse_date_code(value);
@@ -988,13 +941,11 @@
 
   el('importFileInput').addEventListener('change', async (e) => {
     const file = e.target.files[0];
-    e.target.value = ''; // allow re-selecting the same file next time
+    e.target.value = '';
     if (!file || !window.XLSX) return;
     try {
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, { type: 'array' });
-      // Use the first non-empty sheet — an export made by this same app has
-      // "总览" first, which is exactly the one we want anyway.
       const sheetName = wb.SheetNames.find((n) => XLSX.utils.sheet_to_json(wb.Sheets[n]).length > 0) || wb.SheetNames[0];
       const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName]);
       if (!rows.length) { toast(T('admin.import.empty'), true); return; }
@@ -1028,8 +979,7 @@
   });
 
   // ---------------------------------------------------------------------
-  // Invite guest (QR code) — optionally scoped to a single room via
-  // ?room=<id>, which locks that link's guest page to only that room.
+  // Invite guest (QR code)
   // ---------------------------------------------------------------------
   const inviteOverlay = el('inviteModalOverlay');
   let qrInstance = null;
@@ -1148,7 +1098,7 @@
     } catch (err) {
       toast(err.message, true);
     }
-    setInterval(() => loadMeetings(true), POLL_INTERVAL_MS); // silent conflict-avoidance refresh
+    setInterval(() => loadMeetings(true), POLL_INTERVAL_MS);
     setInterval(renderNowBadges, CLOCK_TICK_MS);
   }
 
