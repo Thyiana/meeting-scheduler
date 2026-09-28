@@ -408,8 +408,6 @@
     bookOverlay.classList.add('open');
   }
 
-  // Reused for "编辑" from the view-only modal — same form, pre-filled with
-  // the existing meeting, submitting as an update (PUT) instead of a create.
   function openEditModal(meeting) {
     bookForm.reset();
     bookError.classList.remove('show');
@@ -444,8 +442,6 @@
   bookOverlay.addEventListener('click', (e) => { if (e.target === bookOverlay) closeBookModal(); });
   el('guestSaveBtn').addEventListener('click', () => bookForm.requestSubmit());
 
-  // While no custom color has been chosen, the preview follows whichever
-  // room is currently selected in the dropdown.
   el('guestRoom').addEventListener('change', () => {
     if (!colorTouched) syncCardColorUI(roomColor(Number(el('guestRoom').value)), false);
   });
@@ -500,10 +496,6 @@
     }
   });
 
-  // Renders "距离最近的空闲时段是 X" / "其他空闲会议室：A、B" as extra lines
-  // under the plain error message on a 409 conflict — mirrors the admin
-  // side's version. Returns '' for anything that isn't a conflict, or a
-  // conflict with nothing useful to suggest.
   function renderConflictSuggestion(err) {
     if (err.code !== 'MEETING_CONFLICT' || !err.data) return '';
     const parts = [];
@@ -518,7 +510,6 @@
     return parts.join('');
   }
 
-  // Enter-key navigation between form fields.
   function wireEnterNavigation(container) {
     const fields = Array.from(container.querySelectorAll('input, select, textarea'));
     fields.forEach((field, idx) => {
@@ -542,16 +533,11 @@
 
   function buildIcs(m) {
     const room = state.rooms.find((r) => r.id === m.room_id);
-    // Meeting times are stored as SGT wall-clock strings ("YYYY-MM-DDTHH:MM:SS").
-    // iCalendar wants exactly "YYYYMMDDTHHMMSS" (15 chars) for a local time.
     const fmt = (iso) => iso.replace(/[-:]/g, '').slice(0, 15);
-    // DTSTAMP must be UTC ("...Z"): "2026-09-20T02:41:23.123Z" -> "20260920T024123Z"
     const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
     const esc = (s) => String(s || '').replace(/[\\,;]/g, (c) => '\\' + c).replace(/\n/g, '\\n');
     return [
       'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Meeting Scheduler//CN',
-      // Singapore has no DST, so a fixed-offset VTIMEZONE is exact. Some
-      // clients (notably Outlook) ignore a bare TZID without this block.
       'BEGIN:VTIMEZONE', 'TZID:Asia/Singapore',
       'BEGIN:STANDARD', 'DTSTART:19700101T000000', 'TZOFFSETFROM:+0800', 'TZOFFSETTO:+0800', 'TZNAME:SGT', 'END:STANDARD',
       'END:VTIMEZONE',
@@ -581,11 +567,6 @@
 
   function googleCalendarUrl(m) {
     const room = state.rooms.find((r) => r.id === m.room_id);
-    // Send the SGT wall-clock time as-is ("YYYYMMDDTHHMMSS", no trailing Z)
-    // and let `ctz` tell Google which timezone it's in. This is correct
-    // regardless of the guest's own device timezone — the previous version
-    // built a UTC time via `new Date(...)`, which silently used the *browser's*
-    // timezone and so was only right for browsers set to UTC.
     const fmt = (iso) => iso.replace(/[-:]/g, '').slice(0, 15);
     const params = new URLSearchParams({
       action: 'TEMPLATE',
@@ -655,24 +636,51 @@
   // ---------------------------------------------------------------------
   // Emergency banner (polled independently of the meeting data)
   // ---------------------------------------------------------------------
+  function renderBannerContent(containerEl, textEl, rawData) {
+    if (!rawData) {
+      containerEl.classList.remove('show');
+      textEl.innerHTML = '';
+      return;
+    }
+
+    let textContent = rawData;
+    let imageHtml = '';
+
+    try {
+      const parsed = JSON.parse(rawData);
+      if (parsed && typeof parsed === 'object') {
+        textContent = parsed.text || '';
+        if (parsed.image) {
+          imageHtml = `<img src="${parsed.image}" style="max-width: 100%; max-height: 280px; border-radius: 6px; margin-top: 8px; display: block; object-fit: contain;" alt="公告图片" />`;
+        }
+      }
+    } catch (e) {
+      /* 普通纯文本内容不做额外转换 */
+    }
+
+    if (textContent || imageHtml) {
+      textEl.innerHTML = `<div>${escapeHtml(textContent)}</div>${imageHtml}`;
+      containerEl.classList.add('show');
+    } else {
+      containerEl.classList.remove('show');
+      textEl.innerHTML = '';
+    }
+  }
+
   async function pollAnnouncement() {
     try {
       const data = await api('/admin/announcements');
       const bar = el('announcementBanner');
-      if (data.global) {
-        el('announcementText').textContent = data.global;
-        bar.classList.add('show');
-      } else {
-        bar.classList.remove('show');
+      const textEl = el('announcementText');
+      if (bar && textEl) {
+        renderBannerContent(bar, textEl, data.global);
       }
 
       const roomBar = el('roomAnnouncementBanner');
+      const roomTextEl = el('roomAnnouncementText');
       const roomMsg = state.activeRoomId ? (data.rooms || {})[state.activeRoomId] : '';
-      if (roomMsg) {
-        el('roomAnnouncementText').textContent = roomMsg;
-        roomBar.classList.add('show');
-      } else {
-        roomBar.classList.remove('show');
+      if (roomBar && roomTextEl) {
+        renderBannerContent(roomBar, roomTextEl, roomMsg);
       }
     } catch (err) { /* silent - banner is best-effort */ }
   }

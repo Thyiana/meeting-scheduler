@@ -731,11 +731,47 @@
   // Emergency banner (global + per-room)
   // ---------------------------------------------------------------------
   let lastAnnouncements = { global: '', rooms: {} };
+  let pendingAnnouncementImg = ''; // 保存选中的图片 Base64
+
+  // 选图与预览逻辑绑定
+  const announcementImgInput = el('announcementImgInput');
+  const announcementImgPreviewBox = el('announcementImgPreviewBox');
+  const announcementImgPreview = el('announcementImgPreview');
+  const clearAnnouncementImgBtn = el('clearAnnouncementImgBtn');
+
+  if (announcementImgInput) {
+    announcementImgInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          pendingAnnouncementImg = evt.target.result;
+          if (announcementImgPreview) announcementImgPreview.src = pendingAnnouncementImg;
+          if (announcementImgPreviewBox) announcementImgPreviewBox.style.display = 'flex';
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+  }
+
+  if (clearAnnouncementImgBtn) {
+    clearAnnouncementImgBtn.addEventListener('click', () => {
+      if (announcementImgInput) announcementImgInput.value = '';
+      pendingAnnouncementImg = '';
+      if (announcementImgPreview) announcementImgPreview.src = '';
+      if (announcementImgPreviewBox) announcementImgPreviewBox.style.display = 'none';
+    });
+  }
 
   async function loadAnnouncements() {
     try {
       lastAnnouncements = await api('/admin/announcements');
-      el('bannerText').value = lastAnnouncements.global || '';
+      let rawText = lastAnnouncements.global || '';
+      try {
+        const parsed = JSON.parse(rawText);
+        if (parsed && typeof parsed === 'object') rawText = parsed.text || '';
+      } catch (e) { /* 普通字符串解包失败不处理 */ }
+      el('bannerText').value = rawText;
       renderRoomBannerSelect();
     } catch (err) { /* best-effort */ }
   }
@@ -762,10 +798,21 @@
 
   el('bannerForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const message = el('bannerText').value.trim();
+    const text = el('bannerText').value.trim();
+    
+    // 如果选择并附带了图片，打包发送 JSON 字符串；否则发送纯文本
+    let message = text;
+    if (pendingAnnouncementImg) {
+      message = JSON.stringify({
+        text: text,
+        image: pendingAnnouncementImg
+      });
+    }
+
     try {
       await api('/admin/announcements/global', { method: 'PUT', body: JSON.stringify({ message }) });
       lastAnnouncements.global = message;
+      if (clearAnnouncementImgBtn) clearAnnouncementImgBtn.click();
       toast(T('admin.banner.published'));
     } catch (err) {
       toast(err.message, true);
@@ -774,6 +821,7 @@
 
   el('bannerClearBtn').addEventListener('click', async () => {
     el('bannerText').value = '';
+    if (clearAnnouncementImgBtn) clearAnnouncementImgBtn.click();
     try {
       await api('/admin/announcements/global', { method: 'PUT', body: JSON.stringify({ message: '' }) });
       lastAnnouncements.global = '';

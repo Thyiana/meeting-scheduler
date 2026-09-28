@@ -80,6 +80,16 @@
           <button type="submit" class="btn btn-secondary btn-sm" data-i18n="admin.banner.publishBtn">发布公告</button>
           <button type="button" id="bannerClearBtn" class="btn btn-secondary btn-sm" data-i18n="admin.banner.clearBtn">撤下公告</button>
         </div>
+      <div class="field" style="margin-top: 8px;">
+        <label style="cursor: pointer; font-size: 13px; display: block; margin-bottom: 4px;">
+          📷 附带图片（可选）：
+          <input type="file" id="announcementImgInput" accept="image/*" style="margin-top: 4px; font-size: 12px;">
+        </label>
+        <div id="announcementImgPreviewBox" style="display: none; align-items: center; gap: 8px; margin-top: 6px;">
+          <img id="announcementImgPreview" style="max-width: 120px; max-height: 80px; border-radius: 4px; border: 1px solid var(--border);" src="" alt="图片预览">
+          <button type="button" class="btn btn-secondary btn-sm" id="clearAnnouncementImgBtn">清除图片</button>
+        </div>
+      </div>
       </form>
       <div class="legend-hint" data-i18n="admin.banner.hint">发布后会悬浮显示在嘉宾预约页顶部，嘉宾端每 15 秒自动检查一次。</div>
     </div>
