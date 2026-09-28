@@ -12,7 +12,10 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
-app.use(express.json());
+// 提升 JSON 与 URL 编码请求体限制至 10MB，防止 Base64 海报图片上传时触发 Payload Too Large (413/500) 错误
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
+
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 app.use('/api/rooms', roomsRouter);

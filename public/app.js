@@ -699,7 +699,7 @@
   let lastAnnouncements = { global: '', rooms: {} };
   let pendingRoomBannerImg = ''; // 保存选中的专属公告图片 Base64
 
-  // 会议室专属公告 - 选图与预览逻辑绑定
+  // 会议室专属公告 - 选图与预览逻辑绑定（包含高清无损压缩处理）
   const roomBannerImgInput = el('roomBannerImgInput');
   const roomBannerImgPreviewBox = el('roomBannerImgPreviewBox');
   const roomBannerImgPreview = el('roomBannerImgPreview');
@@ -711,9 +711,38 @@
       if (file) {
         const reader = new FileReader();
         reader.onload = (evt) => {
-          pendingRoomBannerImg = evt.target.result;
-          if (roomBannerImgPreview) roomBannerImgPreview.src = pendingRoomBannerImg;
-          if (roomBannerImgPreviewBox) roomBannerImgPreviewBox.style.display = 'flex';
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+            // 设定上限 1920px（全高清），保持海报字迹极佳清晰度
+            const maxDim = 1920;
+
+            if (width > maxDim || height > maxDim) {
+              if (width > height) {
+                height = Math.round((height * maxDim) / width);
+                width = maxDim;
+              } else {
+                width = Math.round((width * maxDim) / height);
+                height = maxDim;
+              }
+            }
+
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            // 高质量平滑缩放，防止文字锯齿
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(img, 0, 0, width, height);
+
+            // 输出 0.88 高画质 JPEG
+            pendingRoomBannerImg = canvas.toDataURL('image/jpeg', 0.88);
+            if (roomBannerImgPreview) roomBannerImgPreview.src = pendingRoomBannerImg;
+            if (roomBannerImgPreviewBox) roomBannerImgPreviewBox.style.display = 'flex';
+          };
+          img.src = evt.target.result;
         };
         reader.readAsDataURL(file);
       }
@@ -974,7 +1003,7 @@
         toast(T('admin.import.done', { imported: result.imported }));
       }
     } catch (err) {
-      toast(T('admin.import.parseFailed'), true);
+      toast(err.message, true);
     }
   });
 
