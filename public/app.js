@@ -55,7 +55,6 @@
   }
 
   function fmtLocalInput(isoLike) {
-    // "2026-09-28T09:00:00" -> "2026-09-28T09:00" for <input type=datetime-local>
     return (isoLike || '').slice(0, 16);
   }
 
@@ -115,6 +114,29 @@
       throw err;
     }
     return data;
+  }
+
+  // ---------------------------------------------------------------------
+  // Lightbox 放大全屏查看预览全局函数
+  // ---------------------------------------------------------------------
+  function setupLightboxModal() {
+    let modal = el('global-lightbox-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'global-lightbox-modal';
+      modal.style.cssText = 'display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.85); z-index:99999; justify-content:center; align-items:center; cursor:zoom-out;';
+      modal.innerHTML = '<img id="global-lightbox-img" style="max-width:90%; max-height:90%; object-fit:contain; border-radius:8px; box-shadow:0 8px 32px rgba(0,0,0,0.5);" src="" />';
+      modal.addEventListener('click', () => { modal.style.display = 'none'; });
+      document.body.appendChild(modal);
+    }
+  }
+
+  function zoomImage(src) {
+    setupLightboxModal();
+    const modal = el('global-lightbox-modal');
+    const img = el('global-lightbox-img');
+    img.src = src;
+    modal.style.display = 'flex';
   }
 
   // ---------------------------------------------------------------------
@@ -694,21 +716,19 @@
   });
 
   // ---------------------------------------------------------------------
-  // Emergency banner (global + per-room)
+  // Emergency banner (global + per-room 多图支持与渲染)
   // ---------------------------------------------------------------------
   let lastAnnouncements = { global: '', rooms: {} };
-  let pendingRoomBannerImg = ''; // 保存选中的专属公告图片 Base64
+  let pendingRoomBannerImages = []; // 支持多张图片的 Base64 数组
 
-  // 会议室专属公告 - 选图与预览逻辑绑定（包含高清无损压缩处理）
   const roomBannerImgInput = el('roomBannerImgInput');
   const roomBannerImgPreviewBox = el('roomBannerImgPreviewBox');
-  const roomBannerImgPreview = el('roomBannerImgPreview');
   const clearRoomBannerImgBtn = el('clearRoomBannerImgBtn');
 
-  if (roomBannerImgInput) {
-    roomBannerImgInput.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (file) {
+  // 将单图/多图文件压缩并转为 Base64 数组
+  async function processFilesToBase64(files) {
+    const promises = Array.from(files).map((file) => {
+      return new Promise((resolve) => {
         const reader = new FileReader();
         reader.onload = (evt) => {
           const img = new Image();
@@ -716,8 +736,7 @@
             const canvas = document.createElement('canvas');
             let width = img.width;
             let height = img.height;
-            // 设定上限 1920px（全高清），保持海报字迹极佳清晰度
-            const maxDim = 1920;
+            const maxDim = 1920; // 1920px 限制，保证超清
 
             if (width > maxDim || height > maxDim) {
               if (width > height) {
@@ -732,19 +751,51 @@
             canvas.width = width;
             canvas.height = height;
             const ctx = canvas.getContext('2d');
-            // 高质量平滑缩放，防止文字锯齿
             ctx.imageSmoothingEnabled = true;
             ctx.imageSmoothingQuality = 'high';
             ctx.drawImage(img, 0, 0, width, height);
 
-            // 输出 0.88 高画质 JPEG
-            pendingRoomBannerImg = canvas.toDataURL('image/jpeg', 0.88);
-            if (roomBannerImgPreview) roomBannerImgPreview.src = pendingRoomBannerImg;
-            if (roomBannerImgPreviewBox) roomBannerImgPreviewBox.style.display = 'flex';
+            resolve(canvas.toDataURL('image/jpeg', 0.88));
           };
           img.src = evt.target.result;
         };
         reader.readAsDataURL(file);
+      });
+    });
+    return Promise.all(promises);
+  }
+
+  // 渲染后台图片预览网格
+  function renderAdminImagePreviews() {
+    if (!roomBannerImgPreviewBox) return;
+    roomBannerImgPreviewBox.innerHTML = '';
+
+    if (pendingRoomBannerImages.length === 0) {
+      roomBannerImgPreviewBox.style.display = 'none';
+      return;
+    }
+
+    roomBannerImgPreviewBox.style.cssText = 'display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;';
+    pendingRoomBannerImages.forEach((src, idx) => {
+      const img = document.createElement('img');
+      img.src = src;
+      img.style.cssText = 'width:80px; height:80px; object-fit:cover; border-radius:6px; cursor:pointer; border:1px solid #ddd;';
+      img.title = '点击放大查看';
+      img.onclick = () => zoomImage(src);
+      roomBannerImgPreviewBox.appendChild(img);
+    });
+  }
+
+  if (roomBannerImgInput) {
+    // 开启多图选择模式
+    roomBannerImgInput.setAttribute('multiple', 'true');
+
+    roomBannerImgInput.addEventListener('change', async (e) => {
+      const files = e.target.files;
+      if (files && files.length > 0) {
+        const newImages = await processFilesToBase64(files);
+        pendingRoomBannerImages = pendingRoomBannerImages.concat(newImages);
+        renderAdminImagePreviews();
       }
     });
   }
@@ -752,9 +803,8 @@
   if (clearRoomBannerImgBtn) {
     clearRoomBannerImgBtn.addEventListener('click', () => {
       if (roomBannerImgInput) roomBannerImgInput.value = '';
-      pendingRoomBannerImg = '';
-      if (roomBannerImgPreview) roomBannerImgPreview.src = '';
-      if (roomBannerImgPreviewBox) roomBannerImgPreviewBox.style.display = 'none';
+      pendingRoomBannerImages = [];
+      renderAdminImagePreviews();
     });
   }
 
@@ -783,15 +833,31 @@
   function syncRoomBannerText() {
     const roomId = el('roomBannerRoomSelect').value;
     let rawText = (lastAnnouncements.rooms || {})[roomId] || '';
+    pendingRoomBannerImages = [];
+
     try {
       const parsed = JSON.parse(rawText);
-      if (parsed && typeof parsed === 'object') rawText = parsed.text || '';
-    } catch (e) {}
+      if (parsed && typeof parsed === 'object') {
+        rawText = parsed.text || '';
+        if (Array.isArray(parsed.images)) {
+          pendingRoomBannerImages = parsed.images;
+        } else if (parsed.image) {
+          pendingRoomBannerImages = [parsed.image];
+        }
+      }
+    } catch (e) {
+      if (rawText.startsWith('data:image/')) {
+        pendingRoomBannerImages = [rawText];
+        rawText = '';
+      }
+    }
+
     el('roomBannerText').value = rawText;
+    renderAdminImagePreviews();
   }
   el('roomBannerRoomSelect').addEventListener('change', syncRoomBannerText);
 
-  // 全局紧急公告（保持纯文本）
+  // 全局紧急公告
   el('bannerForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const message = el('bannerText').value.trim();
@@ -815,7 +881,7 @@
     }
   });
 
-  // 会议室专属公告（支持图片上传）
+  // 会议室专属公告（支持多图打包）
   el('roomBannerForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const roomId = el('roomBannerRoomSelect').value;
@@ -823,17 +889,16 @@
     const text = el('roomBannerText').value.trim();
 
     let message = text;
-    if (pendingRoomBannerImg) {
+    if (pendingRoomBannerImages.length > 0) {
       message = JSON.stringify({
         text: text,
-        image: pendingRoomBannerImg
+        images: pendingRoomBannerImages
       });
     }
 
     try {
       await api(`/admin/announcements/room/${roomId}`, { method: 'PUT', body: JSON.stringify({ message }) });
       lastAnnouncements.rooms = { ...lastAnnouncements.rooms, [roomId]: message };
-      if (clearRoomBannerImgBtn) clearRoomBannerImgBtn.click();
       toast(T('admin.banner.published'));
     } catch (err) {
       toast(err.message, true);

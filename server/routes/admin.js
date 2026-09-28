@@ -27,7 +27,7 @@ router.get('/announcements', (req, res) => {
 // PUT /api/admin/announcements/global
 router.put('/announcements/global', (req, res) => {
   try {
-    const message = typeof req.body.message === 'string' ? req.body.message.trim() : '';
+    const message = typeof req.body.message === 'string' ? req.body.message.trim() : JSON.stringify(req.body.message || '');
     db.prepare(`
       INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')
@@ -39,15 +39,16 @@ router.put('/announcements/global', (req, res) => {
   }
 });
 
-// PUT /api/admin/announcements/room/:roomId
+// PUT /api/admin/announcements/room/:roomId - 支持多图 Base64 数组/对象直接存储
 router.put('/announcements/room/:roomId', (req, res) => {
   try {
     const roomId = Number(req.params.roomId);
     const room = db.prepare('SELECT id FROM rooms WHERE id = ?').get(roomId);
     if (!room) return res.status(404).json({ error: '会议室不存在', code: 'ROOM_NOT_FOUND' });
 
-    // 优化大文本 Base64 字符串处理，防止处理超长 JSON 时报错
-    const message = typeof req.body.message === 'string' ? req.body.message : JSON.stringify(req.body.message || '');
+    // 支持接收纯文本、数组或 { text, images: [...] } 结构的 JSON 数据
+    const rawPayload = req.body.message;
+    const message = typeof rawPayload === 'object' ? JSON.stringify(rawPayload) : (rawPayload || '').toString();
 
     db.prepare(`
       INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
@@ -56,7 +57,7 @@ router.put('/announcements/room/:roomId', (req, res) => {
 
     res.json({ roomId, message });
   } catch (err) {
-    console.error('[admin/announcements/room] 详细报错信息:', err);
+    console.error('[admin/announcements/room] error:', err);
     res.status(500).json({ error: '保存会议室公告失败: ' + err.message });
   }
 });

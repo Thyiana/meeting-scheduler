@@ -29,13 +29,9 @@
     activeRoomId: null,
     activeDate: DAY_DATES[0],
     fullDay: false,
-    // If the invite link carried ?room=<id>, the guest is locked to that one
-    // room for privacy (they never see other rooms' schedules or even know
-    // they exist) — set once rooms have loaded and the id is confirmed valid.
     lockedRoomId: null,
   };
 
-  // Read once at load: a plain query param, e.g. /guest?room=3
   const urlRoomParam = new URLSearchParams(location.search).get('room');
 
   const el = (id) => document.getElementById(id);
@@ -105,21 +101,41 @@
   }
 
   // ---------------------------------------------------------------------
+  // 图片全屏放大灯箱 (Lightbox)
+  // ---------------------------------------------------------------------
+  function openImagePreview(src) {
+    let modal = el('imagePreviewModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'imagePreviewModal';
+      modal.style.cssText = `
+        position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+        background: rgba(0, 0, 0, 0.85); display: flex; align-items: center;
+        justify-content: center; z-index: 9999; cursor: zoom-out;
+        opacity: 0; transition: opacity 0.2s ease;
+      `;
+      modal.innerHTML = `<img id="imagePreviewImg" style="max-width: 90vw; max-height: 90vh; border-radius: 8px; object-fit: contain; box-shadow: 0 10px 30px rgba(0,0,0,0.5);" />`;
+      document.body.appendChild(modal);
+      modal.addEventListener('click', () => {
+        modal.style.opacity = '0';
+        setTimeout(() => { modal.style.display = 'none'; }, 200);
+      });
+    }
+    const img = el('imagePreviewImg');
+    img.src = src;
+    modal.style.display = 'flex';
+    requestAnimationFrame(() => { modal.style.opacity = '1'; });
+  }
+
+  // ---------------------------------------------------------------------
   // Rooms & tabs
   // ---------------------------------------------------------------------
   async function loadRooms() {
     state.rooms = await api('/rooms');
     if (urlRoomParam && !state.lockedRoomId) {
-      // Prefer an exact id match; only fall back to matching by name if no
-      // id matches (so a room *named* "2" can never hijack the link for the
-      // room whose id is 2).
       const match = state.rooms.find((r) => String(r.id) === String(urlRoomParam))
         || state.rooms.find((r) => String(r.name) === String(urlRoomParam));
       if (match) state.lockedRoomId = match.id;
-      // An unrecognized/stale room id in the URL (room since deleted) just
-      // falls through to the normal "pick any room" experience below rather
-      // than showing an error — the link degrading gracefully matters more
-      // here than surfacing the mismatch.
     }
     if (state.lockedRoomId) {
       state.activeRoomId = state.lockedRoomId;
@@ -133,8 +149,6 @@
 
   function renderRoomTabs() {
     const wrap = el('guestRoomTabs');
-    // Locked-to-one-room links skip the switcher entirely — the whole point
-    // is the guest only ever sees the one room the link was generated for.
     if (state.lockedRoomId) { wrap.innerHTML = ''; wrap.style.display = 'none'; return; }
     wrap.style.display = '';
     wrap.innerHTML = '';
@@ -154,8 +168,6 @@
     });
   }
 
-  // Highlighted "当前选择：会议室 X" callout, kept in sync with the active
-  // tab so it's unmistakable which room's board is being viewed/booked.
   function renderCurrentRoomBanner() {
     const room = state.rooms.find((r) => r.id === state.activeRoomId);
     const box = el('guestCurrentRoom');
@@ -234,9 +246,6 @@
     return 'upcoming';
   }
 
-  // Repositions the "now" time-label badge next to FullCalendar's built-in
-  // red line. Full past/ongoing re-classing happens naturally on the next
-  // poll-driven renderCalendar() call, so this only needs to move the label.
   function renderNowBadge(containerId) {
     const container = el(containerId);
     if (!container) return;
@@ -344,13 +353,6 @@
         select.appendChild(opt);
       });
     });
-  }
-
-  function setPickerFromDateTime(isoLike) {
-    const [datePart, timePart] = fmtLocalInput(isoLike).split('T');
-    if (DAY_DATES.includes(datePart)) el('guestDate').value = datePart;
-    const rounded = roundTo15(timePart || '09:00');
-    return rounded;
   }
 
   function roundTo15(hhmm) {
@@ -634,7 +636,7 @@
   });
 
   // ---------------------------------------------------------------------
-  // Emergency banner (polled independently of the meeting data)
+  // Emergency banner (多图渲染 + 点击预览支持)
   // ---------------------------------------------------------------------
   function renderBannerContent(containerEl, textEl, rawData) {
     if (!rawData) {
@@ -644,23 +646,48 @@
     }
 
     let textContent = rawData;
-    let imageHtml = '';
+    let images = [];
 
     try {
       const parsed = JSON.parse(rawData);
       if (parsed && typeof parsed === 'object') {
         textContent = parsed.text || '';
-        if (parsed.image) {
-          imageHtml = `<img src="${parsed.image}" style="max-width: 100%; max-height: 280px; border-radius: 6px; margin-top: 8px; display: block; object-fit: contain;" alt="公告图片" />`;
+        if (Array.isArray(parsed.images)) {
+          images = parsed.images;
+        } else if (parsed.images) {
+          images = [parsed.images];
+        } else if (parsed.image) {
+          images = [parsed.image];
         }
       }
     } catch (e) {
-      /* 普通纯文本内容不做额外转换 */
+      /* 普通纯文本内容 */
     }
 
-    if (textContent || imageHtml) {
-      textEl.innerHTML = `<div>${escapeHtml(textContent)}</div>${imageHtml}`;
+    let imagesHtml = '';
+    if (images.length > 0) {
+      const imgsList = images.map((src) => `
+        <img src="${escapeHtml(src)}"
+             class="banner-preview-img"
+             style="max-height: 120px; object-fit: cover; border-radius: 6px; cursor: pointer; transition: transform 0.15s ease;"
+             alt="公告图片" />
+      `).join('');
+
+      imagesHtml = `
+        <div class="banner-images-grid" style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;">
+          ${imgsList}
+        </div>
+      `;
+    }
+
+    if (textContent || imagesHtml) {
+      textEl.innerHTML = `<div>${escapeHtml(textContent)}</div>${imagesHtml}`;
       containerEl.classList.add('show');
+
+      // 为生成的图片绑定点击放大预览事件
+      textEl.querySelectorAll('.banner-preview-img').forEach((img) => {
+        img.addEventListener('click', () => openImagePreview(img.src));
+      });
     } else {
       containerEl.classList.remove('show');
       textEl.innerHTML = '';
@@ -720,7 +747,7 @@
       toast(err.message, true);
     }
     pollAnnouncement();
-    setInterval(() => loadMeetings(true), POLL_INTERVAL_MS); // silent conflict-avoidance refresh
+    setInterval(() => loadMeetings(true), POLL_INTERVAL_MS);
     setInterval(pollAnnouncement, BANNER_POLL_MS);
     setInterval(() => renderNowBadge('guestCalendar'), CLOCK_TICK_MS);
   }

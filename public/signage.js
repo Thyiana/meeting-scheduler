@@ -98,6 +98,33 @@
     el('signageClock').textContent = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}  ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}  SGT`;
   }
 
+  // ---------------------------------------------------------------------
+  // 图片全屏放大灯箱 (Lightbox)
+  // ---------------------------------------------------------------------
+  function openImagePreview(src) {
+    let modal = el('imagePreviewModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'imagePreviewModal';
+      modal.style.cssText = `
+        position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+        background: rgba(0, 0, 0, 0.85); display: flex; align-items: center;
+        justify-content: center; z-index: 9999; cursor: zoom-out;
+        opacity: 0; transition: opacity 0.2s ease;
+      `;
+      modal.innerHTML = `<img id="imagePreviewImg" style="max-width: 90vw; max-height: 90vh; border-radius: 8px; object-fit: contain; box-shadow: 0 10px 30px rgba(0,0,0,0.5);" />`;
+      document.body.appendChild(modal);
+      modal.addEventListener('click', () => {
+        modal.style.opacity = '0';
+        setTimeout(() => { modal.style.display = 'none'; }, 200);
+      });
+    }
+    const img = el('imagePreviewImg');
+    img.src = src;
+    modal.style.display = 'flex';
+    requestAnimationFrame(() => { modal.style.opacity = '1'; });
+  }
+
   function renderNowBadges() {
     calendars.forEach((cal, roomId) => {
       const container = document.querySelector(`[data-room-id="${roomId}"] .signage-col-body`);
@@ -205,27 +232,79 @@
 
   let lastAnnouncements = { global: '', rooms: {} };
 
+  // ---------------------------------------------------------------------
+  // 公告栏多图解析与渲染
+  // ---------------------------------------------------------------------
+  function renderBannerContent(containerEl, rawData, isGlobal) {
+    if (!rawData) {
+      containerEl.style.display = 'none';
+      containerEl.innerHTML = '';
+      if (isGlobal) containerEl.classList.remove('show');
+      return;
+    }
+
+    let textContent = rawData;
+    let images = [];
+
+    try {
+      const parsed = JSON.parse(rawData);
+      if (parsed && typeof parsed === 'object') {
+        textContent = parsed.text || '';
+        if (Array.isArray(parsed.images)) {
+          images = parsed.images;
+        } else if (parsed.images) {
+          images = [parsed.images];
+        } else if (parsed.image) {
+          images = [parsed.image];
+        }
+      }
+    } catch (e) {
+      /* 普通纯文本内容 */
+    }
+
+    let imagesHtml = '';
+    if (images.length > 0) {
+      const imgsList = images.map((src) => `
+        <img src="${escapeHtml(src)}"
+             class="banner-preview-img"
+             style="max-height: 100px; object-fit: cover; border-radius: 6px; cursor: pointer; transition: transform 0.15s ease;"
+             alt="公告图片" />
+      `).join('');
+
+      imagesHtml = `
+        <div class="banner-images-grid" style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;">
+          ${imgsList}
+        </div>
+      `;
+    }
+
+    const prefix = isGlobal ? '' : '📌 ';
+    containerEl.innerHTML = `<div>${prefix}${escapeHtml(textContent)}</div>${imagesHtml}`;
+    containerEl.style.display = '';
+    if (isGlobal) containerEl.classList.add('show');
+
+    // 绑定点击放大预览事件
+    containerEl.querySelectorAll('.banner-preview-img').forEach((img) => {
+      img.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openImagePreview(img.src);
+      });
+    });
+  }
+
   function applyRoomBanner(col, roomId) {
     const bar = col.querySelector('[data-room-banner]');
     if (!bar) return;
     const msg = (lastAnnouncements.rooms || {})[roomId];
-    if (msg) {
-      bar.textContent = '📌 ' + msg;
-      bar.style.display = '';
-    } else {
-      bar.style.display = 'none';
-    }
+    renderBannerContent(bar, msg, false);
   }
 
   async function pollAnnouncement() {
     try {
       lastAnnouncements = await api('/admin/announcements');
       const bar = el('announcementBanner');
-      if (lastAnnouncements.global) {
-        el('announcementText').textContent = lastAnnouncements.global;
-        bar.classList.add('show');
-      } else {
-        bar.classList.remove('show');
+      if (bar) {
+        renderBannerContent(bar, lastAnnouncements.global, true);
       }
       // Update every already-rendered column's banner in place, without a
       // full renderGrid() (which would tear down and rebuild every
